@@ -7,22 +7,22 @@
 	<interfaces>
     <eth id="swp1" label="A">
 			<params>
-				<param name="hwaddr" value="00:00:00:00:00:01"/>
+				<param name="hwaddr" value="7c:fe:90:ff:38:59"/>
 			</params>
     </eth>
     <eth id="swp2" label="B">
 			<params>
-				<param name="hwaddr" value="00:00:00:00:00:02"/>
+				<param name="hwaddr" value="7C:FE:90:FF:38:59"/>
 			</params>
     </eth>
     <eth id="swp3" label="C">
 			<params>
-				<param name="hwaddr" value="00:00:00:00:00:03"/>
+				<param name="hwaddr" value="7C:FE:90:FF:38:59"/>
 			</params>
     </eth>
     <eth id="swp4" label="D">
 			<params>
-				<param name="hwaddr" value="00:00:00:00:00:04"/>
+				<param name="hwaddr" value="7C:FE:90:FF:38:59"/>
 			</params>
     </eth>
 	</interfaces>
