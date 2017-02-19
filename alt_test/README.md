@@ -39,5 +39,5 @@
 ## How to run?
 * Install LNST on switch and all hosts
 * Install LNST on management host
-* Run **lnst-slave -d** on switch and hosts
-* Run **lnst-ctl --pools ./lnst_pools/<pool> run lnst_recipes/<recipe>**
+* Run `lnst-slave -d` on switch and hosts
+* Run `lnst-ctl --pools ./lnst_pools/<pool> run lnst_recipes/<recipe>`
