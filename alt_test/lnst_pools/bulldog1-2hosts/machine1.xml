@@ -1,0 +1,19 @@
+<?xml version="1.0" ?>
+<slavemachine>
+	<params>
+		<param name="hostname" value="host1"/>
+		<param name="rpc_port" value="9999"/>
+	</params>
+	<interfaces>
+		<eth id="eth1" label="A">
+			<params>
+				<param name="hwaddr" value="08:00:27:F8:73:68"/>
+			</params>
+		</eth>
+		<eth id="eth2" label="B">
+			<params>
+				<param name="hwaddr" value="08:00:27:6C:C8:98"/>
+			</params>
+		</eth>
+	</interfaces>
+</slavemachine>

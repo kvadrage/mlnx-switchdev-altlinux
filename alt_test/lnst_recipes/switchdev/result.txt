@@ -1,0 +1,19 @@
+<?xml version="1.0" ?>
+<results>
+	<recipe match_num="1" name="/root/lnst/recipes/switchdev/l2-001-bridge.xml" result="FAIL">
+		<pool_match virtual="false">
+			<m_match host_id="switch" pool_id="switch">
+				<if_match if_id="if1" pool_if_id="{'hwaddr': '00:00:00:00:00:01', 'driver': 'e1000', 'target': 'swp1'}"/>
+				<if_match if_id="if2" pool_if_id="{'hwaddr': '00:00:00:00:00:02', 'driver': 'e1000', 'target': 'swp2'}"/>
+			</m_match>
+			<m_match host_id="machine1" pool_id="machine1">
+				<if_match if_id="if1" pool_if_id="{'hwaddr': '08:00:27:F8:73:68', 'driver': 'e1000', 'target': 'eth1'}"/>
+			</m_match>
+			<m_match host_id="machine2" pool_id="machine2">
+				<if_match if_id="if1" pool_if_id="{'hwaddr': '08:00:27:2F:75:45', 'driver': 'e1000', 'target': 'eth2'}"/>
+			</m_match>
+		</pool_match>
+		<error_message>Command exception raised.</error_message>
+		<task/>
+	</recipe>
+</results>

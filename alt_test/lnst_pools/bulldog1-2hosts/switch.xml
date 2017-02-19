@@ -1,0 +1,29 @@
+<?xml version="1.0" ?>
+<slavemachine>
+	<params>
+		<param name="hostname" value="sw1"/>
+		<param name="rpc_port" value="9999"/>
+	</params>
+	<interfaces>
+    <eth id="swp1" label="A">
+			<params>
+				<param name="hwaddr" value="00:00:00:00:00:01"/>
+			</params>
+    </eth>
+    <eth id="swp2" label="B">
+			<params>
+				<param name="hwaddr" value="00:00:00:00:00:02"/>
+			</params>
+    </eth>
+    <eth id="swp3" label="C">
+			<params>
+				<param name="hwaddr" value="00:00:00:00:00:03"/>
+			</params>
+    </eth>
+    <eth id="swp4" label="D">
+			<params>
+				<param name="hwaddr" value="00:00:00:00:00:04"/>
+			</params>
+    </eth>
+	</interfaces>
+</slavemachine>
