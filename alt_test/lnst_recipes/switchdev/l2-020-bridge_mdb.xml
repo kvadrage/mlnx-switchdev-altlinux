@@ -31,7 +31,7 @@
         </host>
         <host id="machine2">
             <interfaces>
-                <eth id="if1" label="C" />
+                <eth id="if1" label="A" />
                 <veth_pair>
                     <veth id="veth0"/>
                     <veth id="veth1" netns="nsif1">
@@ -43,7 +43,7 @@
                         <slave id="veth0"/>
                     </slaves>
                 </bridge>
-                <eth id="if2" label="D" />
+                <eth id="if2" label="B" />
                 <veth_pair>
                     <veth id="veth2"/>
                     <veth id="veth3" netns="nsif2">
