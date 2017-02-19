@@ -12,17 +12,17 @@
     </eth>
     <eth id="swp2" label="B">
 			<params>
-				<param name="hwaddr" value="7C:FE:90:FF:38:59"/>
+				<param name="hwaddr" value="7c:fe:90:ff:38:5d"/>
 			</params>
     </eth>
     <eth id="swp3" label="C">
 			<params>
-				<param name="hwaddr" value="7C:FE:90:FF:38:59"/>
+				<param name="hwaddr" value="7c:fe:90:ff:38:51"/>
 			</params>
     </eth>
     <eth id="swp4" label="D">
 			<params>
-				<param name="hwaddr" value="7C:FE:90:FF:38:59"/>
+				<param name="hwaddr" value="7c:fe:90:ff:38:55"/>
 			</params>
     </eth>
 	</interfaces>
