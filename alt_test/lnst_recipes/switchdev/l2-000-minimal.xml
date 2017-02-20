@@ -16,7 +16,7 @@
         <host id="switch">
             <interfaces>
                 <eth id="if1" label="A" />
-                <eth id="if2" label="C" />
+                <eth id="if2" label="B" />
             </interfaces>
         </host>
     </network>
