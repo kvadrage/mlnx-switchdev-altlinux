@@ -1,0 +1,3 @@
+[submodule "lnst"]
+	path = lnst
+	url = https://github.com/jpirko/lnst
