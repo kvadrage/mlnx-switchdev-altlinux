@@ -1,0 +1,58 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+: ${TUNLOCAL:?missing TUNLOCAL}
+: ${TUNREMOTE:?missing TUNREMOTE}
+: ${TUNSPI:?missing TUNSPI}
+
+[ -x "${IPSECADM:=$DEFAULT_IPSECADM}" ] || {
+	print_error "$IPSECADM does not exist or is not executable. Try installing ipsecadm RPM."
+	exit 1
+}
+
+if [ -n "$DIGEST" -o -n "$DIGESTFILE" ]; then
+	if [ -z "$DIGEST" -o -z "$DIGESTFILE" ]; then
+		print_error "DIGEST and DIGESTFILE must be defined simultaneously!"
+		exit 1
+	fi
+	if [ ! -s "$MYIFACEDIR/$DIGESTFILE" ]; then
+		print_error "bad digest file $MYIFACEDIR/$DIGESTFILE"
+		exit 1
+	fi
+	DIGEST_OPTIONS="--digest=$DIGEST --digest-keyfile=$MYIFACEDIR/$DIGESTFILE"
+fi
+
+if [ -n "$CIPHER" -o -n "$CIPHERFILE" ]; then
+	if [ -z "$CIPHER" -o -z "$CIPHERFILE" ]; then
+		print_error "CIPHER and CIPHERFILE must be defined simultaneously!"
+		exit 1
+	fi
+	if [ ! -s "$MYIFACEDIR/$CIPHERFILE" ]; then
+		print_error "bad cipher file $MYIFACEDIR/$CIPHERFILE"
+		exit 1
+	fi
+	CIPHER_OPTIONS="--cipher=$CIPHER --cipher-keyfile=$MYIFACEDIR/$CIPHERFILE"
+fi
+
+if [ -z "$CIPHER_OPTIONS" -a -z "$DIGEST_OPTIONS" ]; then
+	print_error "Either cipher or digest must be defined"
+	exit 1
+fi
+
+# ipsec_tunnel guesses correct module names itself, so we don't have
+# to find a module for the cipher and digest
+$MODPROBE cryptoapi || {
+	print_error "CryptoAPI kernel module not found"
+	exit 1
+}
+
+$MODPROBE ipsec_tunnel || {
+	print_error "ipsec_tunnel kernel module not found"
+	exit 1
+}
+
+$IPSECADM sa add --spi=$TUNSPI --src=$TUNLOCAL --dst=$TUNREMOTE \
+$CIPHER_OPTIONS $DIGEST_OPTIONS --duplex && \
+$IPSECADM tunnel add $NAME --local=$TUNLOCAL --remote=$TUNREMOTE --spi=$TUNSPI ${HOST:+--nextdev=$HOST}

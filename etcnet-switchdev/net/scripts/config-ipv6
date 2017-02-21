@@ -1,0 +1,58 @@
+#!/bin/bash
+
+usage()
+{
+	echo '/etc/net IPv6 handler'
+	echo "Usage: $0 <interface> <start|stop>" >&2
+	exit 1
+}
+
+[ $# -ge 2 ] || usage
+NAME=$1
+ACTION=$2
+eval "IPV4ADDRESS=($3)"
+eval "IPV6ADDRESS=($4)"
+pickup_defaults
+pickup_options
+
+case $ACTION in
+	start)
+		. $SCRIPTDIR/functions-ipv6
+		if [ "$NAME" != "lo" ] && ! is_yes "$DONT_FLUSH"; then
+			$IP -6 address flush dev $NAME scope host >/dev/null 2>&1
+			$IP -6 address flush dev $NAME scope site >/dev/null 2>&1
+			$IP -6 address flush dev $NAME scope global >/dev/null 2>&1
+		fi
+		if iface_is_up $NAME; then
+			case "$BOOTPROTO" in
+				static|dhcp[-,\ ]static)
+					try_static6 && config_ipv6_routes_rules add
+					;;
+				dhcp6)
+					try_dhcp6 && config_ipv6_routes_rules add
+					;;
+				dhcp6[-,\ ]static)
+					try_dhcp6 || try_static6 && config_ipv6_routes_rules add
+					;;
+				dhcp|ipv4ll|dhcp[-,\ ]ipv4ll|dhcp[-,\ ]ipv4ll[-,\ ]static)
+					# nothing to do
+					;;
+				*)
+					print_error "unknown BOOTPROTO '$BOOTPROTO'"
+					;;
+			esac
+		fi
+	;;
+	stop)
+		. $SCRIPTDIR/functions-ipv6
+		config_ipv6_routes_rules del
+		if [ "$NAME" != "lo" ] && ! is_yes "$DONT_FLUSH"; then
+			$IP -6 address flush dev $NAME scope host >/dev/null 2>&1
+			$IP -6 address flush dev $NAME scope site >/dev/null 2>&1
+			$IP -6 address flush dev $NAME scope global >/dev/null 2>&1
+		fi
+	;;
+	*)
+		print_error "Illegal argument to $0: '$ACTION'"
+	;;
+esac

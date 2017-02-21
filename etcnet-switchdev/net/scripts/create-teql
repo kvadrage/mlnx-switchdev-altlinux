@@ -1,0 +1,13 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+# Let's hope we manage all TEQLs ourselves :-/
+modprobe_with_rename -o $NAME sch_teql >/dev/null
+$IP link set dev teql0 name $NAME
+
+: ${HOST:?HOST must be set for $NAME}
+for host in $HOST; do
+	$TC qdisc add dev $host root $NAME
+done

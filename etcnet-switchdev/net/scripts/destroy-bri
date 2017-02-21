@@ -1,0 +1,6 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+$IP link del $NAME

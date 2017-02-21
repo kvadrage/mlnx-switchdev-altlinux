@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# This hook script is executed by openvpn daemon upon tunnel creation.
+# OpenVPN doesn't configure IP on the interface, relying on this script.
+# From openvpn manpage:
+
+# For --dev-type tun execute as:
+# cmd tun_dev tun_mtu link_mtu ifconfig_local_ip ifconfig_remote_ip [ init | restart ]
+
+# For --dev-type tap with server-assigned IP address execute as:
+# cmd tap_dev tap_mtu link_mtu ifconfig_local_ip ifconfig_netmask [ init | restart ]
+
+# For --dev-type tap with server configured without "pull" execute as: 
+# cmd tap_dev tap_mtu link_mtu  [ init | restart ]
+
+case $# in
+	4)
+		[ "$4" = "init" ] && exec /etc/net/scripts/ifup-openvpn $1
+		exit 0
+		;;
+	6)
+		[ "$6" = "init" ] && exec /etc/net/scripts/ifup-openvpn $1
+		exit 0
+		;;
+	*)
+		logger -d "Wrong arguments to $0: '$@'"
+		exit 1
+		;;
+esac
+

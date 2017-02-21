@@ -1,0 +1,75 @@
+#!/bin/bash
+
+PROG="${0##*/}"
+delim='='
+
+usage() {
+    [ "$1" = 0 ] || exec >&2
+    cat << EOF
+Usage: $PROG [options] <iface> <param1 param2 ...>
+
+Options:
+    -d, --delimiter=DELIM    use DELIM instead of \`$delim' for field delimiter
+    -h, --help               show this message
+    -v, --verbose            print a message for each action
+
+EOF
+    [ -n "$1" ] && exit "$1" || exit
+}
+
+error() {
+    printf %s\\n "$PROG: Error: $*" >&2
+}
+
+TEMP=`getopt -n $PROG -o d:,h,v -l delimiter:,help,verbose -- "$@"` || usage
+eval set -- "$TEMP"
+
+while :; do
+    case $1 in
+	-d| --delimiter) shift
+		[ -z "$1" ] || delim="$1"
+		;;
+	-h| --help) usage 0
+	    ;;
+	-v| --verbose) verbose=-v #unused
+	    ;;
+	--) shift; break
+	    ;;
+	*) 
+		error "unrecognized option: $1"
+		exit 1
+	    ;;
+    esac
+    shift
+done
+
+[ "$#" -eq 0 ] && 
+	error "iface not set" &&
+	usage 1
+
+NAME="$1" && shift
+
+[ "$#" -eq 0 ] && 
+	error "parameters not set" &&
+	usage 1
+
+. "${SCRIPTDIR:=/etc/net/scripts}/functions"
+if [ -d "$IFACEDIR/$NAME@$NETHOST" ]; then
+	MYIFACEDIR="$IFACEDIR/$NAME@$NETHOST"
+else
+	MYIFACEDIR="$IFACEDIR/$NAME"
+fi
+
+[ -d "$MYIFACEDIR" ] || {
+	print_error "interface configuration directory '$MYIFACEDIR' not found"
+	exit 1
+}
+export IFACEDIR MYIFACEDIR SCRIPTDIR NAME NETPROFILE SEEN_IFACES
+
+init_netprofile
+pickup_options
+
+for p in $@; do
+	eval "[ -n \"\$$p\" ]" || { error "$p: parameter not set"; continue; }
+	eval "printf '$p%s%s\n' \"$delim\" \"\$$p\""
+done

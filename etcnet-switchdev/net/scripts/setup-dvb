@@ -1,0 +1,40 @@
+#!/bin/bash
+
+pickup_defaults
+init_netprofile
+pickup_options
+
+case "${DVBTYPE:?missing DVBTYPE option for $NAME, please fix}" in
+	ss223|ss226)
+		[ -x "${SZAP:=$DEFAULT_SZAP}" ] || {
+			print_error "$SZAP does not exist or is not executable for $NAME"
+			exit 1
+		}
+		[ -s "${CHANNELS_CONF:=$MYIFACEDIR/channels.conf}" ] || {
+			print_error "empty or non-existent $CHANNELS_CONF for $NAME"
+			exit 1
+		}
+		$SZAP -c $CHANNELS_CONF ${SZAP_ARGS:=$DEFAULT_SZAP_ARGS}
+	;;
+	pentanet)
+		[ -x "${PENTANETT:=$DEFAULT_PENTANETT}" ] || {
+			print_error "$PENTANETT does not exist or is not executable for $NAME"
+			exit 1
+		}
+		if profiled_filename PROF_CONFIGFILE "${PENTANET_CONF:-$DEFAULT_PENTANET_CONF}"; then
+			$PENTANETT -a -f $PROF_CONFIGFILE >/dev/null
+		fi
+	;;
+	pentaval)
+		[ -x "${PENTAVALT:=$DEFAULT_PENTAVALT}" ] || {
+			print_error "$PENTAVALT does not exist or is not executable for $NAME"
+			exit 1
+		}
+		if profiled_filename PROF_CONFIGFILE "${PENTAVAL_CONF:-$DEFAULT_PENTAVAL_CONF}"; then
+			$PENTAVALT -a -f $PROF_CONFIGFILE >/dev/null
+		fi
+	;;
+	*)
+		print_error "unknown DVB type '$DVBTYPE' for interface $NAME"
+	;;
+esac

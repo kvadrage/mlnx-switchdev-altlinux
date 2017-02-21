@@ -1,0 +1,10 @@
+This is a special directory like /etc/net/ifaces/default is. If /etc/net
+receives a request to configure an interface, which does not have its own
+configuration directory, and ALLOW_UNKNOWN is enabled, /etc/net/ifaces/unknown
+will be used as configuration source. 'default' and 'unknown' are reserved
+names, so don't assign them to real interfaces. Please pay attention that
+you can't use all options for 'unknown' interfaces. Default settings should
+result in attempt to perform DHCP/IPv4LL configuration after enabling
+ALLOW_UNKNOWN variable in global options. The most natural way to do it is to
+create a distribution/site specific options file in /etc/net/options.d to
+override default value in 00-default file.

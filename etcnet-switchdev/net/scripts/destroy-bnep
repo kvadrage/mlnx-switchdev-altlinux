@@ -1,0 +1,15 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -x "${PAND:=$DEFAULT_PAND}" ] || {
+	print_error "$PAND does not exist or is not executable. Try installing bluez-utils RPM."
+	exit 1
+}
+
+if [ -s "$NAP" ]; then
+	$PAND --kill $NAP
+else
+	$PAND --killall
+fi

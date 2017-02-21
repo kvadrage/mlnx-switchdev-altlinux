@@ -1,0 +1,50 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -x "${OSSH:=$DEFAULT_OSSH}" ] || {
+    print_error "$OSSH does not exist or is not executable. Try installing openssh-clients RPM."
+    exit 1
+}
+
+[ -n "$REMOTE" ] || {
+    print_error "empty REMOTE variable. can't proceed."
+    exit 1
+}
+
+case "$NAME" in
+    tun*)
+    TUNTAP_MODE="point-to-point"
+    TUNTAP_NR="${NAME##*tun}"
+    REMOTE_NR="${REMOTEIF##*tun}"
+    ;;
+    tap*) 
+    TUNTAP_MODE="ethernet"
+    TUNTAP_NR="${NAME##*tap}"
+    REMOTE_NR="${REMOTEIF##*tap}"
+    ;;
+    *)	print_error "$NAME must match either 'tun*' or 'tap*'"
+    exit 1
+esac
+
+$IP tuntap add mode ${NAME:0:3} $NAME ${TUNTAP_OPTIONS}
+
+OSSHIDENTITY="$MYIFACEDIR/${OSSHIDENTITY:-$DEFAULT_OSSHIDENTITY}"
+
+if ! profiled_filename IDENTITY "$OSSHIDENTITY"; then
+    print_error "identity file '$OSSHIDENTITY' does not exist"
+    exit 1
+fi
+
+if is_yes "$IFUP_REMOTE"; then
+    $OSSH -i "$IDENTITY" ${REMOTEPORT:+-p $REMOTEPORT} \
+	${REMOTEUSER:+$REMOTEUSER@}${REMOTE} ${REMOTEIFUP:-/sbin/ifup $REMOTEIF}
+    [ $? -eq 0 ] || {
+	print_error "failed to bring remote iface $REMOTEIF up"
+	exit 1
+    }
+fi
+
+$OSSH -i "$IDENTITY" ${REMOTEPORT:+-p $REMOTEPORT} -f -M -o "controlpath /var/run/etcnet-ossh-$NAME" \
+    -o "tunnel ${TUNTAP_MODE}" -w ${TUNTAP_NR}:${REMOTE_NR:-any} ${REMOTEUSER:+$REMOTEUSER@}${REMOTE} /bin/true

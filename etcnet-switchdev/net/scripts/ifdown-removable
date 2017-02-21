@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# This script is a hook for hotplug or pcmcia-cs.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+# Look if iface name will change after ifrename call.
+# Then load correct options. If hotplug/pcmcia is not
+# allowed for the interface, just return. Otherwise
+# rename the interface and run common iface init stuff.
+
+[ -z "$1" ] && usage
+NAME=$1
+OLD_NAME=$NAME
+CALLER=${2:?$0: missing 2nd arg}
+[ -z "$SCRIPTDIR" ] && . ${SCRIPTDIR:=/etc/net/scripts}/functions
+
+case "$CALLER" in
+	pcmcia_cs|hotplug)
+	;;
+	*)
+		print_error "invalid 2nd arg to $0: '$CALLER'"
+	;;
+esac
+
+pickup_defaults
+
+# Deal with ifrename and mappings before we try to read options,
+# because iface name may change.
+# Note: when called from hotplug, $1 holds correct ifname.
+# In pcmcia_cs case we get the old ifname (before ifrename call).
+
+MAPPED_NAME=`get_mapped_ifname $NAME`
+if [ -n "$MAPPED_NAME" -a "$NAME" != "$MAPPED_NAME" ]; then
+	NAME=$MAPPED_NAME
+	print_progress
+fi
+
+init_nethost
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+	MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+	MYIFACEDIR=$IFACEDIR/$NAME
+fi
+export IFACEDIR MYIFACEDIR SCRIPTDIR NAME NETPROFILE SEEN_IFACES
+
+init_netprofile
+if [ ! -d "$MYIFACEDIR" ]; then
+	if is_yes "$ALLOW_UNKNOWN"; then
+		if [ -d $IFACEDIR/unknown@$NETHOST ]; then
+			MYIFACEDIR=$IFACEDIR/unknown@$NETHOST
+		else
+			# Let's hope it exists.
+			MYIFACEDIR=$IFACEDIR/unknown
+		fi
+	else
+		print_error "ignored unknown interface '$NAME' (lookup ALLOW_UNKNOWN option or create a usable configuration)"
+	fi
+fi
+
+pickup_options
+
+is_yes "$DISABLED" && {
+	print_message -n 'skipped, disabled '
+  exit 1
+}
+
+if [ "$CALLER" = "pcmcia_cs" ]; then
+	! is_yes "$USE_PCMCIA" && {
+		is_yes "$SILENT_REMOVABLES" || print_error "USE_PCMCIA is disabled for $NAME"
+		exit 1
+	}
+fi
+
+if [ "$CALLER" = "hotplug" ]; then
+	! is_yes "$USE_HOTPLUG" && {
+		is_yes "$SILENT_REMOVABLES" || print_error "USE_HOTPLUG is disabled for $NAME"
+		exit 1
+	}
+fi
+
+# common part
+is_yes "$IFDOWN_CHILDREN" && ifdown_children
+xargise_file $MYIFACEDIR/ipneigh "$IP neigh del dev $NAME"
+case "$BOOTPROTO" in
+	dhcp|dhcp[-,\ ]static|dhcp[-,\ ]ipv4ll|dhcp[-,\ ]ipv4ll[-,\ ]static)
+		stop_dhcp_client
+	;;
+	dhcp6|dhcp6[-,\ ]static)
+		stop_dhcp6_client
+	;;
+	*)
+	;;
+esac
+if iface_is_up $NAME; then
+	ExecIfExecutable $SCRIPTDIR/shutdown-$TYPE $NAME
+	ExecIfExecutable $LOCALSCRIPTDIR/ifdown-pre-local $NAME && print_progress
+	ExecIfExecutable $MYIFACEDIR/ifdown-pre $NAME && print_progress
+	$IP link set dev $NAME down
+fi
+ExecIfExecutable $LOCALSCRIPTDIR/ifdown-post-local $NAME && print_progress
+ExecIfExecutable $MYIFACEDIR/ifdown-post $NAME && print_progress

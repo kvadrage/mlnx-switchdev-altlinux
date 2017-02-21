@@ -1,0 +1,3 @@
+BOOTPROTO=dhcp-ipv4ll
+USE_HOTPLUG=on
+

@@ -1,0 +1,27 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+case "${DVBTYPE:?missing DVBTYPE option for $NAME, please fix}" in
+	ss223|ss226)
+		# we don't rmmod skystar2 module to keep our kernel running
+		[ -x "${DVBNET:=$DEFAULT_DVBNET}" ] || {
+			print_error "$DVBNET does not exist or is not executable for $NAME"
+			exit 1
+		}
+		NUM=`echo $NAME|cut -f2 -d_`
+		${DVBNET:=$DEFAULT_DVBNET} -d $NUM
+		# With new kernels we can safely unload module
+		try_rmmod b2c2_flexcop_pci
+	;;
+	pentanet)
+		try_rmmod pentanet
+	;;
+	pentaval)
+		try_rmmod pentaval
+	;;
+	*)
+		print_error "unknown DVB type '$DVBTYPE' for interface $NAME"
+	;;
+esac

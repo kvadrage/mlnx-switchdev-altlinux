@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# This script destroys a PPP interface.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+# TODO: check for existence
+kill `cat /var/run/$NAME.pid`

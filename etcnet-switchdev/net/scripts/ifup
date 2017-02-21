@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# This script is intended to be run from command-line or etcnet
+# initscript. It determines if the iface should be created, then
+# creates the device and calls ifup-common to do the rest.
+# Removable ifaces should be controlled via hotplug and pcmcia_cs,
+# which will deal with ifup-removable.
+
+usage()
+{
+	echo "Usage: $0 <interface> [boot [skiphot]]" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+export NAME=$1
+
+if [ -z "$SCRIPTDIR" ]; then
+	export SCRIPTDIR=/etc/net/scripts
+	. $SCRIPTDIR/functions
+fi
+
+pickup_defaults
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+	MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+	MYIFACEDIR=$IFACEDIR/$NAME
+fi
+
+[ -d "$MYIFACEDIR" ] || {
+	print_error "interface configuration directory '$MYIFACEDIR' not found"
+	exit 1
+}
+export MYIFACEDIR NETPROFILE
+
+init_netprofile
+pickup_options
+
+# 1. check constraints
+is_yes "$DISABLED" && {
+	print_message -n " '$NAME' is disabled"
+  exit 2
+}
+
+if [ "$2" = "boot" ]; then
+	is_no "$ONBOOT" && {
+		print_message -n ' on boot '
+	  exit 2
+	}
+	if [ "$3" = "skiphot" ]; then
+		is_yes "$USE_HOTPLUG" && {
+			print_message -n " skipping hotplug iface '$NAME' "
+			exit 2
+		}
+		is_yes "$USE_PCMCIA" && {
+			print_message -n " skipping PCMCIA iface '$NAME' "
+			exit 2
+		}
+	fi
+fi
+
+# 2. check if device already exists and it's not a forced run
+[ "$2" != "force" ] && iface_is_up $NAME && {
+	print_message -n " '$NAME' is already up "
+	exit 2
+}
+
+# 3a. avoid cycles
+seen_iface $NAME && exit 0
+export SEEN_IFACES
+add_seen_iface $NAME
+
+# 3b. deps control
+if is_yes "$IFUP_PARENTS"; then
+	ifup_parents || {
+		print_error "Could not ifup dependency for interface '$NAME'"
+		exit 1
+	}
+fi
+
+# 3c. exec hooks
+ExecIfExecutable $LOCALSCRIPTDIR/ifup-pre-local $NAME && print_progress
+ExecIfExecutable $MYIFACEDIR/ifup-pre $NAME && print_progress
+
+# 4. make iface appear
+iface_exists $NAME || {
+if ExecIfExecutable $SCRIPTDIR/create-$TYPE $NAME; then
+	print_progress
+else
+	print_nack
+	exit 1
+fi
+}
+
+# 5. adjust name and configure iface
+if profiled_filename IFTAB_FILE "$IFTAB"; then
+	if $IFRENAME -c "$IFTAB_FILE" -n "$NAME"; then
+		print_progress
+	else
+		print_nack
+	fi
+fi
+$SCRIPTDIR/ifup-common $NAME

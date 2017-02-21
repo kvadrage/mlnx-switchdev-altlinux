@@ -1,0 +1,12 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+# Assume that we manage all dummy interfaces ourselves. In this
+# case dummy0 is only used as a temp name. No iftab processing
+# is done for dummies, so if we see the name already present,
+# the work is over.
+iface_exists $NAME && exit
+modprobe_with_rename -o $NAME dummy >/dev/null
+$IP link set dev dummy0 name $NAME

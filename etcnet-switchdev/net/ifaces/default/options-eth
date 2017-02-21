@@ -1,0 +1,12 @@
+# This file doesn't contain comments any more.
+# For detailed options description refer to etcnet-options(5) manpage,
+# section 'Ethernet options'.
+
+USE_IFPLUGD=no
+PERSISTENT_IFPLUGD=no
+IFPLUGD_EXTRA_ARGS='--delay-up=0 --delay-down=10'
+LINKDETECT=auto
+LINKDELAY=5
+CONFIG_DOT1X=no
+CONFIG_WIRELESS=yes
+AUTO_BROADCAST=yes

@@ -1,0 +1,79 @@
+#!/bin/bash
+
+. $SCRIPTDIR/functions-ip
+
+# This file contains supplementary functions for config-ipv6
+
+try_static6()
+{
+	xargise_file $MYIFACEDIR/ipv6address "$IP -6 address add dev $NAME"
+}
+
+process_ipv6rules()
+{
+	local OP=${1:?missing 1st arg to $FUNCNAME}
+	local REVERSE SRCFILE
+	[ "$OP" = "del" ] && REVERSE="|tac"
+	if profiled_filename SRCFILE "$MYIFACEDIR/ipv6rule"; then
+		eval "$DENOISE \"$SRCFILE\" $REVERSE" |
+		while read FIRST REST; do
+			case "$FIRST" in
+				add)
+					[ $OP = "del" ] && FIRST=del
+				;;
+				del)
+					# should we restore deleted rules on iface shutdown?
+					 [ $OP = "del" ] && FIRST=add
+				;;
+				*)
+					FIRST="$OP $FIRST"
+				;;
+			esac
+			$IP -6 rule $(eval_string $FIRST $REST)
+			print_progress
+		done
+	fi
+}
+
+config_ipv6_routes_rules()
+{
+	# setup routes
+	local OP=${1:?missing 1st arg to $FUNCNAME}
+	local SUFFIX SRCFILE
+	IPV4ADDRESS=($(get_ipv6_addresses $NAME))
+	[ "$OP" = "del" ] && REVERSE="|tac"
+	if profiled_filename SRCFILE "$MYIFACEDIR/ipv6route"; then
+		eval "$DENOISE \"$SRCFILE\" $REVERSE" |
+		while read FIRST REST; do
+			# If 'dev' is not specified, add current dev.
+			SUFFIX=''
+			echo "$FIRST $REST" | egrep -q '[[:space:]]dev[[:space:]]' || SUFFIX="dev $NAME"
+			# If operation is not specified, use 'append'.
+			case "$FIRST" in
+				add|change|append|replace)
+					[ $OP = "del" ] && FIRST=del
+				;;
+				del)
+					# should we restore deleted rules on iface shutdown?
+					[ $OP = "del" ] && FIRST=add
+				;;
+				*)
+					[ "$OP" = "add" ] && FIRST="append $FIRST" || FIRST="$OP $FIRST"
+				;;
+			esac
+			$IP -6 route $(eval_string $FIRST $REST $SUFFIX)
+			print_progress
+		done
+	fi
+
+	# Setup rules only after routes are Ok, so that route tables are
+	# already populated when rule starts routing traffic to them.
+	process_ipv6rules $OP
+}
+
+get_ipv6_addresses()
+{
+    local NAME=${1:?missing 1st argument to $FUNCNAME}
+    # FIXME should we parse braindamaged IPv6 by braindamaged regexp?
+    printf "$($IP -6 addr show dev $NAME 2>/dev/null|grep -ose "\binet6[[:space:]]\+[0-9a-fA-F.:]\+"|cut -f2 -d" ")"
+}

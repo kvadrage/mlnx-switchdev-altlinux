@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# This file is /etc/net helper for use with wpa_cli action mode
+# and called from wpa_cli with two parameters:
+# $1 interface name
+# $2 event, CONNECTED|DISCONNECTED
+
+if [ -z "$1" -o -z "$2" ] ; then
+    logger -d "Wrong arguments to $0: '$@'"
+    exit 1
+fi
+
+unset SEEN_IFACES
+[ "$2" = "CONNECTED" ] && exec /etc/net/scripts/ifup-wireless $1
+[ "$2" = "DISCONNECTED" ] && exec /etc/net/scripts/ifdown-wireless $1
+
+exit 0

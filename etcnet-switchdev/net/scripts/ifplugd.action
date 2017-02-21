@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# This file is /etc/net version of ifplugd.action file, which
+# is a part of ifplugd, licensed under GPL.
+# From ifplugd manpage:
+#ENVIRONMENT
+#       The action script will be called with two environment variables set:
+#
+#       IFPLUGD_PREVIOUS The previous link status. Either "up", "down", "error"
+#       or "disabled". The former values should be obvious, the latter  is  set
+#       on daemon startup.
+#
+#       IFPLUGD_CURRENT The current link status. See above for possible values.
+
+if [ -z "$1" -o -z "$2" ] ; then
+	logger -d "Wrong arguments to $0: '$@'"
+	exit 1
+fi
+
+[ "$2" = "up" ] && exec /etc/net/scripts/ifup-ifplugd $1
+[ "$2" = "down" ] && exec /etc/net/scripts/ifdown-ifplugd $1
+exit 0

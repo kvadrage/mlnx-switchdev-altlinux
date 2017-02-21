@@ -1,0 +1,15 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -x "${PAND:=$DEFAULT_PAND}" ] || {
+	print_error "$PAND does not exist or is not executable. Try installing bluez-utils RPM."
+	exit 1
+}
+
+if [ -n "$BLUEZ_REMOTE" ]; then
+	$PAND --nodetach --ethernet $NAME --connect $BLUEZ_REMOTE $PAND_OPTIONS
+else
+	$PAND --nodetach --ethernet $NAME --search $PAND_OPTIONS
+fi

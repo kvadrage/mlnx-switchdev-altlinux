@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# This script is a hook for hotplug or pcmcia-cs.
+# It determines if the specified iface has to be
+# processed, then performs necessary pre-configuration
+# and lets ifup-common do the rest.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+# Look if iface name will change after ifrename call.
+# Then load correct options. If hotplug/pcmcia is not
+# allowed for the interface, just return. Otherwise
+# rename the interface and run common iface init stuff.
+
+[ -z "$1" ] && usage
+NAME=$1
+OLD_NAME=$NAME
+CALLER=${2:?$0: missing 2nd arg}
+. ${SCRIPTDIR:=/etc/net/scripts}/functions
+
+case "$CALLER" in
+	pcmcia_cs|hotplug)
+	;;
+	*)
+		print_error "invalid 2nd arg to $0: '$CALLER'"
+		exit 1
+	;;
+esac
+
+pickup_defaults
+# Deal with ifrename and mappings before we try to read options,
+# because iface name may change.
+
+MAPPED_NAME=`get_mapped_ifname $NAME`
+if [ -n "$MAPPED_NAME" -a "$NAME" != "$MAPPED_NAME" ]; then
+	NAME=$MAPPED_NAME
+	print_progress
+fi
+
+init_nethost
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+	MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+	MYIFACEDIR=$IFACEDIR/$NAME
+fi
+export IFACEDIR MYIFACEDIR SCRIPTDIR NAME NETPROFILE SEEN_IFACES
+
+init_netprofile
+if [ ! -d "$MYIFACEDIR" ]; then
+	if is_yes "$ALLOW_UNKNOWN"; then
+		if [ -d $IFACEDIR/unknown@$NETHOST ]; then
+			MYIFACEDIR=$IFACEDIR/unknown@$NETHOST
+		else
+			# Let's hope it exists.
+			MYIFACEDIR=$IFACEDIR/unknown
+		fi
+	else
+		print_error "ignored unknown interface '$NAME' (lookup ALLOW_UNKNOWN option or create a usable configuration)"
+	fi
+fi
+
+pickup_options
+is_yes "$DISABLED" && {
+	print_message -n "skipped disabled iface $NAME"
+  exit 1
+}
+
+if [ "$CALLER" = "pcmcia_cs" ]; then
+	! is_yes "$USE_PCMCIA" && {
+		print_error "USE_PCMCIA is disabled for $NAME"
+		exit 1
+	}
+fi
+
+if [ "$CALLER" = "hotplug" ]; then
+	! is_yes "$USE_HOTPLUG" && {
+		print_error "USE_HOTPLUG is disabled for $NAME"
+		exit 1
+	}
+fi
+
+[ -n "$MACADDR_WAITTIME" ] && wait_for_macaddr $OLD_NAME
+
+# Now we know that iface should be processed. Let's go.
+if [ "$NAME" != "$OLD_NAME" ]; then
+	if profiled_filename IFTAB_FILE "$IFTAB"; then
+		if $IFRENAME -c "$IFTAB_FILE" -i $OLD_NAME -n "$NAME"; then
+			print_progress
+		else
+			print_nack
+		fi
+	fi
+fi
+
+ExecIfExecutable $LOCALSCRIPTDIR/ifup-pre-local $NAME && print_progress
+
+# avoid cycles
+seen_iface $NAME && exit 0
+add_seen_iface $NAME
+
+$SCRIPTDIR/ifup-common $NAME

@@ -1,0 +1,74 @@
+# Set this to yes to see more messages during start and stop.
+#VERBOSE=yes
+# Progress dots are on by default.
+#PROGRESS=yes
+# Note: if you don't define VERBOSE and PROGRESS here, you will
+# get verbose output with progress indicators from network.init
+# and no output except errors from ifup* and ifdown*.
+
+# Don't log hotplug warnings from {ifup,ifdown}-removable.
+SILENT_REMOVABLES=off
+
+# VLAN interfaces naming type, see vconfig --help.
+# This variable is used only for vlantab AUTO interfaces.
+# VLAN_PLUS_VID
+# VLAN_PLUS_VID_NO_PAD
+# DEV_PLUS_VID
+# DEV_PLUS_VID_NO_PAD
+VLAN_NAMETYPE=DEV_PLUS_VID_NO_PAD
+
+# tools
+IP=/sbin/ip
+BRIDGE=/sbin/bridge
+TC=/sbin/tc
+OVPN=/usr/sbin/openvpn
+MODPROBE=/sbin/modprobe
+LSMOD=/sbin/lsmod
+INSMOD=/sbin/insmod
+RMMOD=/sbin/rmmod
+SYSCTL=/sbin/sysctl
+IFRENAME=/sbin/ifrename
+
+# IPv4LL
+ZCIP_CLIENT=/usr/sbin/avahi-autoipd
+
+# IPX tools
+IPX_INTERFACE=/sbin/ipx_interface
+IPX_INTERNAL_NET=/sbin/ipx_internal_net
+IPX_CONFIGURE=/sbin/ipx_configure
+
+# resolv.conf post-install command. Usually you don't want to define this
+# variable here, but place distribution-specific options file to options.d.
+# The command and its arguments must be stored in different variables, because
+# the command is checked to be executable.
+#RESOLV_POSTIN_CMD=
+#RESOLV_POSTIN_ARGS=
+
+# If set to yes, makes /etc/net treat new interfaces w/o configuration directory
+# as other normal interfaces.
+ALLOW_UNKNOWN=no
+
+# FireWall defaults
+IPSET=/sbin/ipset
+IPTABLES=/sbin/iptables
+IP6TABLES=/sbin/ip6tables
+EBTABLES=/sbin/ebtables
+
+# List of known-good network modules (ones that support link detection).
+GOOD_MODULE_LIST='eepro100 e100 8139too tulip 3c59x hostap via-rhine sk98lin r8169 e1000e'
+
+# Set this to no to always remove any modules and be compatible with 2.4
+# series kernels.
+NEVER_RMMOD=yes
+
+# Enable automatic broadcast address generation. ip doesn't set broadcast
+# address for an interface, unless explicitly told. This option will add
+# 'broadcast +' to each IPv4 address line (see iproute2 manual).
+AUTO_BROADCAST=off
+
+IFGROUP[0]='lo dummy'
+IFGROUP[1]='eth plip usb dvb bnep tuntap'
+IFGROUP[2]='vlan bond bri teql wlan macvlan macvtap'
+IFGROUP[3]='iptun ipsectun ovpn ossh l2tp'
+IFGROUP[4]='ppp'
+

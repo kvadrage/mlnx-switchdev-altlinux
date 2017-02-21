@@ -1,0 +1,300 @@
+# All chains and targets are case-sensitive !
+policy: 
+insert: -I
+ins: -I
+append: -A
+add: -A
+delete: -D
+del: -D
+# Builtin targets
+accept: -j ACCEPT
+allow: -j ACCEPT
+pass: -j ACCEPT
+drop: -j DROP
+deny: -j DROP
+return: -j RETURN
+queue: -j QUEUE
+
+# Target extensions
+balance: -j BALANCE --to-destination
+classify: -j CLASSIFY --set-class
+clusterip: -j CLUSTERIP --new
+clusterip-hashmode: -j CLUSTERIP --hashmode
+clusterip-clustermac: -j CLUSTERIP --clustermac
+clusterip-total-nodes: -j CLUSTERIP --total-nodes
+clusterip-local-node: -j CLUSTERIP --local-node
+clusterip-hash-init: -j CLUSTERIP --hash-init
+connmark: -j CONNMARK --set-mark
+set-connmark: -j CONNMARK --set-mark
+mask: --mask
+connmark-save: -j CONNMARK --save-mark
+save-connmark: -j CONNMARK --save-mark
+connmark-restore: -j CONNMARK --restore-mark
+restore-connmark: -j CONNMARK --restore-mark
+dnat: -j DNAT --to-destination
+dnat-to: -j DNAT --to-destination
+dnat-to-destination: -j DNAT --to-destination
+set-dscp: -j DSCP --set-dscp
+set-dscp-class: -j DSCP --set-dscp-class
+ecn-tcp-remove: -j ECN --ecn-tcp-remove
+log: -j LOG
+log-level: --log-level
+log-prefix: --log-prefix
+log-tcp-sequence: --log-tcp-sequence
+log-tcp-options: --log-tcp-options
+log-ip-options: --log-ip-options
+log-uid: --log-uid
+mark: -j MARK --set-mark
+set-mark: -j MARK --set-mark
+masquerade: -j MASQUERADE
+masquerade-to-ports: -j MASQUERADE --to-ports
+mirror: -j MIRROR
+netmap: -j NETMAP --to
+netmap-to: -j NETMAP --to
+notrack: -j NOTRACK
+redirect: -j REDIRECT
+redirect-to: -j REDIRECT --to-ports
+redirect-to-ports: -j REDIRECT --to-ports
+reject: -j REJECT
+reject-with: -j REJECT --reject-with
+route-to: -j ROUTE --oif
+route-from: -j ROUTE --iif
+route-gw: -j ROUTE --gw
+route-continue: -j ROUTE --continue
+route-tee: -j ROUTE --tee
+add-set: -j SET --add-set
+del-set: -j SET --del-set
+snat: -j SNAT --to-source
+snat-to: -j SNAT --to-source
+snat-to-source: -j SNAT --to-source
+set-mss: -j TCPMSS --set-mss
+clamp-mss-to-pmtu: -j TCPMSS --clamp-mss-to-pmtu
+set-tos: -j TOS --set-tos
+trace: -j TRACE
+ttl-set: -j TTL --ttl-set
+set-ttl: -j TTL --ttl-set
+ttl-dec: -j TTL --ttl-dec
+dec-ttl: -j TTL --ttl-dec
+ttl-inc: -j TTL --ttl-inc
+inc-ttl: -j TTL --ttl-inc
+ulog: -j ULOG
+ulog-nlgroup: --ulog-nlgroup
+ulog-prefix: --ulog-prefix
+ulog-cprange: --ulog-cprange
+ulog-qthreshold: --ulog-qthreshold
+
+# Match extensions
+srctype: -maddrtype --src-type
+src-type: -maddrtype --src-type
+dsttype: -maddrtype --dst-type
+dst-type: -maddrtype --dst-type
+ah: -mah --ahspi
+ah-ahspi: -mah --ahspi
+childlevel: -mchildlevel --childlevel
+condition: -mcondition --condition
+connmarked: -mconnmark --mark
+connrate: -mconnrate --connrate
+ctstate: -mconntrack --ctstate
+conntrack-ctstate: -mconntrack --ctstate
+ctproto: -mconntrack --ctproto
+conntrack-ctproto: -mconntrack --ctproto
+ctorigsrc: -mconntrack --ctorigsrc
+conntrack-ctorigsrc: -mconntrack --ctorigsrc
+ctorigdst: -mconntrack --ctorigdst
+conntrack-ctorigdst: -mconntrack --ctorigdst
+ctreplsrc: -mconntrack --ctreplsrc
+conntrack-ctreplsrc: -mconntrack --ctreplsrc
+ctrepldst: -mconntrack  --ctrepldst
+conntrack-ctrepldst: -mconntrack  --ctrepldst
+ctstatus: -mconntrack --ctstatus
+conntrack-ctstatus: -mconntrack --ctstatus
+ctexpire: -mconntrack --ctexpire
+conntrack-ctexpire: -mconntrack --ctexpire
+dscp: -mdscp --dscp
+dscp-class: -mdscp --dscp-class
+dstlimit: -mdstlimit --dstlimit
+dstlimit-mode: -mdstlimit --dstlimit-mode
+dstlimit-name: -mdstlimit --dstlimit-name
+dstlimit-burst: -mdstlimit --dstlimit-burst
+dstlimit-htable-size: -mdstlimit --dstlimit-htable-size
+dstlimit-htable-max: -mdstlimit --dstlimit-htable-max
+dstlimit-htable-gcinterval: -mdstlimit --dstlimit-htable-gcinterval
+dstlimit-htable-expire: -mdstlimit --dstlimit-htable-expire
+ecn-tcp-cwr: -mecn --ecn-tcp-cwr
+tcp-cwr: -mecn --ecn-tcp-cwr
+ecn-tcp-ece: -mecn --ecn-tcp-ece
+tcp-ece: -mecn --ecn-tcp-ece
+ecn-ip-ect: -mecn --ecn-ip-ect
+ip-ect: -mecn --ecn-ip-ect
+espspi: -mesp --espspi
+esp-spi: -mesp --espspi
+fuzzy-lower-limit: -mfuzzy --lower-limit
+lower-limit: -mfuzzy --lower-limit
+fuzzy-upper-limit: -mfuzzy --upper-limit
+upper-limit: -mfuzzy --upper-limit
+helper: -mhelper --helper
+icmp-type: -micmp --icmp-type
+iprange-src-range: -miprange --src-range
+iprange-src: -miprange --src-range
+src-range: -miprange --src-range
+iprange-dst-range: -miprange --dst-range
+iprange-dst: -miprange --dst-range
+dst-range: -miprange --dst-range
+length: -mlength --length
+limit-rate: -mlimit --limit
+rate: -mlimit --limit
+limit-burst: -mlimit --limit-burst
+burst: --limit-burst
+mac: -mmac --mac-source
+mac-source: -mmac --mac-source
+marked: -mmark --mark
+sports: -mmultiport --source-ports
+from-ports: -mmultiport --source-ports
+source-ports: -mmultiport --source-ports
+dports: -mmultiport --destination-ports
+to-ports: -mmultiport --destination-ports
+destination-ports: -mmultiport --destination-ports
+ports: -mmultiport --ports
+nth-every: -mnth --every
+nth-counter: -mnth --counter
+nth-start: -mnth --start
+nth-packet: -mnth --packet
+owner-uid: -mowner --uid-owner
+uid-owner: -mowner --uid-owner
+owner-gid: -mowner --gid-owner
+gid-owner: -mowner --gid-owner
+owner-pid: -mowner --pid-owner
+pid-owner: -mowner --pid-owner
+owner-sid: -mowner --sid-owner
+sid-owner: -mowner --sid-owner
+owner-cmd: -mowner --cmd-owner
+cmd-owner: -mowner --cmd-owner
+physdev-in: -mphysdev --physdev-in
+physdev-out: -mphysdev --physdev-out
+physdev-is-in: -mphysdev --physdev-is-in
+physdev-is-out: -mphysdev --physdev-is-out
+physdev-is-bridged: -mphysdev --physdev-is-bridged
+pkttype: -mpkttype --pkt-type
+random: -mrandom --average 
+realm: -mrealm --realm
+set: -mset --set
+state: -mstate --state
+tcp-source-port: -mtcp --source-port
+tcp-src-port: -mtcp --source-port
+tcp-destination-port: -mtcp --destination-port
+tcp-dst-port: -mtcp --destination-port
+tcp-dest-port: -mtcp --destination-port
+tcp-flags: -mtcp --tcp-flags
+flags: -mtcp --tcp-flags
+tcp-syn: --syn
+tcp-option: -mtcp --tcp-option
+tcp-mss: -mtcp --mss
+tcpmss: -mtcpmss --mss
+timestart: -mtime --timestart
+time-start: -mtime --timestart
+timestop: -mtime --timestop
+time-stop: -mtime --timestop
+days: -mtime --days
+datestart: -mtime --datestart
+date-start: -mtime --datestart
+datestop: -mtime --datestop
+date-stop: -mtime --datestop
+tos: -mtos --tos
+ttl-eq: -mttl --ttl-eq
+ttl-gt: -mttl --ttl-gt
+ttl-lt: -mttl --ttl-lt
+udp-source-port: -mudp --source-port
+udp-src-port: -mudp --source-port
+udp-destination-port: -mudp --destination-port
+udp-dest-port: -mudp --destination-port
+udp-dst-port: -mudp --destination-port
+unclean: -munclean
+
+# Parameters
+from: --src
+src: --src
+source: --src
+to: --dst
+dst: --dst
+destination: --dst
+sport: --source-port
+src-port: --source-port
+from-port: --source-port
+dport: --destination-port
+dst-port: --destination-port
+to-port: --destination-port
+in-iface: -i
+from-iface: -i
+siface: -i
+out-iface: -o
+to-iface: -o
+diface: -o
+all: --protocol ALL
+tcp: --protocol TCP
+udp: --protocol UDP
+icmp: --protocol ICMP
+gre: --protocol GRE
+jump: -j 
+jump-to: -j
+any: 0.0.0.0/0
+numeric: -n
+exact: -x
+verbose: -v
+lines: --line-numbers
+with: 
+without: 
+and: 
+as: 
+if: 
+net: 
+host: 
+is: 
+are: 
+when: 
+but: 
+proto: --protocol
+not: !
+fragment: --fragment
+set-counters: --set-counters
+unspec:UNPSEC
+unicast:UNICAST
+local:LOCAL
+broadcast:BROADCAST
+anycast:ANYCAST
+multicast:MULTICAST
+blackhole:BLACKHOLE
+unreachable:UNREACHABLE
+unreach:UNREACHABLE
+prohibit:PROHIBIT
+throw:THROW
+nat:NAT
+xresolve:XRESOLVE
+invalid:INVALID
+established:ESTABLISHED
+new:NEW
+related:RELATED
+ssnat:SNAT
+sdnat:DNAT
+expected:EXPECTED
+seen_reply:SEEN_REPLY
+assured:ASSURED
+net-unreachable: icmp-net-unreachable
+net-unreach: icmp-net-unreachable
+port-unreachable: icmp-port-unreachable
+port-unreach: icmp-port-unreachable
+proto-unreachable: icmp-proto-unreachable
+proto-unreach: icmp-proto-unreachable
+net-prohibited: icmp-net-prohibited
+net-prohibit: icmp-net-prohibited
+host-prohibited: icmp-host-prohibited
+host-prohibit: icmp-host-prohibited
+admin-prohibited: icmp-admin-prohibited
+admin-prohibit: icmp-admin-prohibited
+# Flag ALL not supported
+syn:SYN
+ack:ACK
+fin:FIN
+rst:RST
+urg:URG
+psh:PSH
+none:NONE

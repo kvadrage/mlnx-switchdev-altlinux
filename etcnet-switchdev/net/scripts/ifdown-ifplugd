@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# ifdown script for ifplugd-controlled interfaces. This is mostly
+# stripped-down version of ifdown script. This script should unconfigure
+# the interface and leave the device up so that ifplugd can continue
+# monitoring it.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+# forget everything we have inherited from ifplugd/wpa_cli
+unset SEEN_IFACES
+export SCRIPTDIR=/etc/net/scripts
+. $SCRIPTDIR/functions
+pickup_defaults
+. $SCRIPTDIR/functions-eth
+init_nethost
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+	MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+	MYIFACEDIR=$IFACEDIR/$NAME
+fi
+
+export MYIFACEDIR NETPROFILE
+init_netprofile
+pickup_options
+
+is_yes "$DISABLED" && exit 0
+iface_exists $NAME || exit 0
+seen_iface $NAME && exit 0
+add_seen_iface $NAME
+export SEEN_IFACES
+
+if is_yes "$IFDOWN_CHILDREN"; then
+	ifdown_children || {
+		print_error "Could not ifdown children for parent iface '$NAME'"
+		exit 1
+	}
+fi
+xargise_file $MYIFACEDIR/ipneigh "$IP neigh del dev $NAME"
+
+case "$BOOTPROTO" in
+	dhcp|dhcp[-,\ ]static|dhcp[-,\ ]ipv4ll[-,\ ]static)
+		stop_dhcp_client
+	;;
+	dhcp6|dhcp6[-,\ ]static)
+		stop_dhcp6_client
+	;;
+	*)
+	;;
+esac
+
+if [ "${0##/*}" = "ifdown-ifplugd" ]; then
+	case "$USE_IFPLUGD" in
+		[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|[Yy]|1|[Aa][Uu][Tt][Oo])
+		# It's Ok, just do the job.
+		;;
+		*)
+		print_error "ERROR: USE_IFPLUGD is not enabled for $NAME"
+		exit 1
+		;;
+	esac
+fi
+
+ExecIfExecutable $LOCALSCRIPTDIR/ifdown-pre-local $NAME && print_progress
+ExecIfExecutable $MYIFACEDIR/ifdown-pre $NAME && print_progress
+# The same things as ifdown does.
+
+# get ipv4 and/or ipv6 addresses of the interface. get them in any way
+# (interface can be "down", but has addresses)
+is_yes "$CONFIG_IPV4" && SourceIfNotEmpty $SCRIPTDIR/functions-ipv4 && IPV4ADDRESS="$(get_ipv4_addresses $NAME)"
+is_yes "$CONFIG_IPV6" && SourceIfNotEmpty $SCRIPTDIR/functions-ipv6 && IPV6ADDRESS="$(get_ipv6_addresses $NAME)"
+
+# stop QoS and FireWall before iproute2 rules stop
+is_yes "$CONFIG_QOS"  && $SCRIPTDIR/config-qos  $NAME stop "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+is_yes "$CONFIG_FW"   && $SCRIPTDIR/config-fw   $NAME stop "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+
+is_yes "$CONFIG_IPX"  && $SCRIPTDIR/config-ipx  $NAME stop
+is_yes "$CONFIG_IPV6" && $SCRIPTDIR/config-ipv6 $NAME stop "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+is_yes "$CONFIG_IPV4" && $SCRIPTDIR/config-ipv4 $NAME stop "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+
+ExecIfExecutable $LOCALSCRIPTDIR/ifdown-post-local $NAME && print_progress
+ExecIfExecutable $MYIFACEDIR/ifdown-post $NAME && print_progress
+
+if is_yes "$IFDOWN_PARENTS"; then
+	ifdown_parents || {
+		print_error "Could not ifdown dependency for interface '$NAME'"
+		exit 1
+	}
+fi

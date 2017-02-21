@@ -1,0 +1,2 @@
+# openvpn, like pppd, may assign initial address(es) itself
+DONT_FLUSH=on

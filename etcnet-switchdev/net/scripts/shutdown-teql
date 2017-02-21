@@ -1,0 +1,10 @@
+#!/bin/bash
+
+pickup_defaults
+init_netprofile
+pickup_options
+
+: ${HOST:?HOST must be set for $NAME}
+for host in $HOST; do
+	$TC qdisc del dev $host root
+done

@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# This script is intended to be run from /etc/ifplugd/ifplugd.action
+# or /etc/net/scripts/ifplugd.action. The only thing we should do is
+# to finish configuration of a ready pre-created interface.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+export NAME=$1
+
+# forget everything we have inherited from ifplugd/wpa_cli
+unset SEEN_IFACES
+export SCRIPTDIR=/etc/net/scripts
+. $SCRIPTDIR/functions
+pickup_defaults
+init_nethost
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+	MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+	MYIFACEDIR=$IFACEDIR/$NAME
+fi
+export MYIFACEDIR NETPROFILE
+
+init_netprofile
+pickup_options
+
+is_yes "$DISABLED" && {
+	print_message "skipped disabled iface $NAME"
+  exit 1
+}
+
+seen_iface $NAME && exit 0
+add_seen_iface $NAME
+export SEEN_IFACES
+
+case "${0##*/}" in
+    ifup-ifplugd)
+    IN_WPA_CLI=no IN_IFPLUGD=yes IN_OVPN=no $SCRIPTDIR/ifup-common $NAME
+    ;;
+    ifup-wireless)
+    USE_IFPLUGD=no IN_IFPLUGD=no IN_WPA_CLI=yes IN_OVPN=no $SCRIPTDIR/ifup-common $NAME
+    ;;
+    ifup-openvpn)
+    USE_IFPLUGD=no IN_IFPLUGD=no IN_WPA_CLI=no IN_OVPN=yes $SCRIPTDIR/ifup-common $NAME
+    ;;
+    *)
+    $SCRIPTDIR/ifup-common $NAME
+    ;;
+esac
+
+exit 0

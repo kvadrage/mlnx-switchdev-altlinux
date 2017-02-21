@@ -1,0 +1,123 @@
+#!/bin/bash
+# etcnet QoS handler
+
+# default values
+NAME=eth0
+MYIFACEDIR=
+STAT=qdisc
+TC=/sbin/tc
+
+usage()
+{
+    echo '/etc/net QoS handler'
+    echo "Usage: $0 [iface] <action> [action options]" >&2
+    echo ""
+    echo " iface    - real interface name ('eth0' by default) or 'all' for all interfaces"
+    echo " action   - 'start','stop','restart','show|list','stat|stats'"
+    echo ""
+    echo " start    - start QoS for given interface"
+    echo " stop     - stop QoS for given interface"
+    echo " restart  - equivalent to 'stop' then 'start'"
+    echo " show     - list qdiscs, classes or filters on given interface"
+    echo " list     - same as 'show'"
+    echo " stat     - print statistics for qdiscs, classes or filters on given interface "
+    echo " stats    - same as 'stat'"
+    echo ""
+    echo "Options for actions 'show' or 'list' and 'stat' or 'stats':"
+    echo " - one of 'qdisc' (by default), 'class' or 'filter'"
+    echo " - component specific options (e.g. 'parent')"
+    echo ""
+    exit 1
+}
+
+# Be verbose in any way
+export VERBOSE=on
+export PROGRESS=on
+# We must define it
+export SCRIPTDIR=/etc/net/scripts
+
+[ -s $SCRIPTDIR/functions ] ||
+{
+    echo "ERROR: $SCRIPTDIR/functions not found!"
+    exit 1
+}
+
+. $SCRIPTDIR/functions
+pickup_defaults
+
+[ -s $SCRIPTDIR/config-qos ] ||
+{
+    print_error "$SCRIPTDIR/config-qos not found!"
+    exit 1
+}
+
+[ -z "$NETPROFILE" ] && init_netprofile
+
+[ $# -lt 1 ] && usage
+
+case $# in
+    1)
+	ACTION=$1
+	shift
+	;;
+    *)
+	NAME=$1
+	ACTION=$2
+	shift 2
+	;;
+esac
+
+print_message "Interface is \"$NAME\""
+print_message "Action is \"$ACTION\""
+print_message
+
+[ "$NAME" = "all" ] && NAME="*"
+
+for IFACE in "$IFACEDIR"/$NAME; do
+    [ -d "$IFACE" ] || continue
+    NAME=`basename $IFACE`
+    [ -z "$MYIFACEDIR" ] &&
+	{
+	   [ -d $IFACEDIR/$NAME@$NETHOST ] && MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST || MYIFACEDIR=$IFACEDIR/$NAME
+	}
+    [ ! -d "$MYIFACEDIR/qos" ] &&
+	{
+	     print_message "No QoS is configured for interface \"$NAME\""
+	     print_message
+	     MYIFACEDIR=""
+	     continue
+	}
+    export MYIFACEDIR
+    [ "$NAME" != "default" ] && pickup_options
+    case "$ACTION" in
+	start)
+		print_message "Starting QoS for device $NAME:"
+		$SCRIPTDIR/config-qos $NAME start
+		;;
+	stop)
+		print_message "Stopping QoS for device $NAME:"
+		$SCRIPTDIR/config-qos $NAME stop
+		;;
+	restart)
+		print_message "Restarting QoS for device $NAME:"
+		$SCRIPTDIR/config-qos $NAME stop
+		$SCRIPTDIR/config-qos $NAME start
+		;;
+	show|list)
+		[ $# -ge 1 ] && STAT="$1" && shift
+		print_message "\"$STAT\" list on device $NAME:"
+		$TC $STAT show dev $NAME $@
+		;;
+	stat|stats)
+		[ $# -ge 1 ] && STAT="$1" && shift
+		print_message "\"$STAT\" statistics on device $NAME:"
+		$TC -s -d $STAT show dev $NAME $@
+		;;
+	*)
+		usage
+		;;
+    esac
+    print_message
+    MYIFACEDIR=
+    export MYIFACEDIR
+done

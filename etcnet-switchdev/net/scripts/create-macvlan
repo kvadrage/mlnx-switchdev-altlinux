@@ -1,0 +1,8 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+: ${HOST:?HOST must be set for $NAME}
+
+$IP link add link $HOST name $NAME type $TYPE ${MODE:+mode $MODE}

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+: ${HOST:?HOST is missing for $NAME}
+: ${VID:?VID is missing for $NAME}
+
+$MODPROBE 8021q || {
+	print_error "8021q kernel module not found"
+	exit 2
+}
+
+# obsolete now?
+if iface_is_up $HOST; then
+	create_vlan_iface $HOST $VID $NAME
+else
+	print_error "host interface '$HOST' for '$NAME' is down"
+	exit 1
+fi
+
+exit 0

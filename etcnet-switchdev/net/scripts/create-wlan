@@ -1,0 +1,13 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -x "${WLANCONFIG:=$DEFAULT_WLANCONFIG}" ] || {
+	print_error "$WLANCONFIG does not exist or is not executable. Try installing madwifi-utils RPM."
+	exit 1
+}
+
+: ${HOST:?HOST is missing for $NAME}
+
+$WLANCONFIG $NAME create nounit wlandev "$HOST" wlanmode "${WLANMODE:=sta}" > /dev/null

@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# This file contains supplementary functions for both config-ipv4/ipv6
+
+dhcp_cmdline()
+{
+	local H T V=${1}
+	case `basename $DHCP_CLIENT` in
+		dhcpcd)
+			if [ -n "$DHCP_HOSTNAME" ]; then
+				case "$DHCP_HOSTNAME" in
+					AUTO)
+						print_warning "AUTO in DHCP_HOSTNAME is no longer supported."
+					;;
+					localhost)
+						[ -n "$HOSTNAME" -a "$HOSTNAME" != "localhost" -a "$HOSTNAME" != "localhost.localdomain" ] && \
+						H="-h $HOSTNAME"
+					;;
+					*)
+						H="-h $DHCP_HOSTNAME"
+					;;
+				esac
+			fi
+			T=${DHCP_TIMEOUT:+-t $DHCP_TIMEOUT}
+			echo "$H $T $NAME"
+			;;
+		dhclient)
+			if [ -n "$DHCP_HOSTNAME" ]; then
+				case "$DHCP_HOSTNAME" in
+					localhost)
+						[ -n "$HOSTNAME" -a "$HOSTNAME" != "localhost" -a "$HOSTNAME" != "localhost.localdomain" ] && \
+						H="-F $HOSTNAME"
+					;;
+					*)
+						H="-H $DHCP_HOSTNAME"
+					;;
+				esac
+			fi
+			T=${DHCP_TIMEOUT:+${V:+-1} -timeout $DHCP_TIMEOUT}
+			[ -z "$T" -a -n "$V" ] && T="-nw"
+			echo "-q ${V:+-$V} $H $T -pf /var/run/dhclient-$NAME.pid -lf /var/lib/dhcp/dhclient/state/dhclient$V-$NAME.leases $NAME"
+			;;
+		*)
+			print_error "Can't pick command line for DHCP client '$DHCP_CLIENT'"
+			;;
+	esac
+}
+
+# This function uses check_eth_link(), but DHCP used to work for Ethernet
+# mostly (if not only), so functions-eth should be already sourced in such
+# case. This may break one day.
+
+try_dhcp6()
+{
+	DHCP_CLIENT='/sbin/dhclient' try_dhcp 6
+}
+
+try_dhcp()
+{
+	local V=${1}
+
+	[ -x "$DHCP_CLIENT" ] || {
+		print_error "$DHCP_CLIENT does not exist or is not executable."
+		return 1
+	}
+	if need_detection; then
+		if check_eth_link $NAME; then
+			print_progress
+		else
+			print_nack
+			return 1
+		fi
+	fi
+	DHCP_CMDLINE=`dhcp_cmdline $V`
+	$DHCP_CLIENT $DHCP_ARGS $DHCP_CMDLINE >/dev/null
+	local RET=$?
+	# dhcpcd sets iface down on failure, breaking dhcp-* BOOTPROTOs
+	if [ "$RET" != "0" ]; then
+		print_nack
+		! is_yes $KEEP_DOWN && $IP link set dev $NAME up
+	else
+		print_progress
+	fi
+	return $RET
+}
+

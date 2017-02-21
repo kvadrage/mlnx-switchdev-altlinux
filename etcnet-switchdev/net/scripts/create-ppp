@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# This script tries to create a PPP interface.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+# Basic options usually shouldn't be modified, but for some rare cases we
+# define it before reading defaults and interface options to allow override.
+# Please don't override BASIC_PPPOPTIONS, if possible.
+BASIC_PPPOPTIONS="nolog updetach unit ${NAME//ppp/}"
+
+pickup_defaults
+pickup_options
+
+[ -x "${PPPD:=$DEFAULT_PPPD}" ] || {
+	print_error "$PPPD does not exist or is not executable. Try installing ppp RPM."
+	exit 1
+}
+
+[ -x "${CHAT:=$DEFAULT_CHAT}" ] || {
+	print_error "$CHAT does not exist or is not executable. Try installing ppp RPM."
+	exit 1
+}
+CHAT_CMD="$CHAT ${CHATOPTIONS:-$DEFAULT_CHATOPTIONS} -f"
+
+# Locate additional files.
+profiled_filename PROF_PPPOPTIONSFILE "$MYIFACEDIR/${PPPOPTIONSFILE:=$DEFAULT_PPPOPTIONSFILE}" ||
+	PROF_PPPOPTIONSFILE=
+
+profiled_filename PROF_PPPINITCHAT "$MYIFACEDIR/${PPPINITCHAT:=$DEFAULT_PPPINITCHAT}" ||
+	PROF_PPPINITCHAT=
+
+profiled_filename PROF_PPPCONNECTCHAT "$MYIFACEDIR/${PPPCONNECTCHAT:=$DEFAULT_PPPCONNECTCHAT}" ||
+	PROF_PPPCONNECTCHAT=
+
+profiled_filename PROF_PPPDISCONNECTCHAT "$MYIFACEDIR/${PPPDISCONNECTCHAT:=$DEFAULT_PPPDISCONNECTCHAT}" ||
+	PROF_PPPDISCONNECTCHAT=
+
+# Build additional option set.
+[ -n "$PPPTIMEOUT" ] && if [ "$PPPTIMEOUT" -gt 3 ]; then
+	BASIC_PPPOPTIONS="$BASIC_PPPOPTIONS lcp-echo-interval $(($PPPTIMEOUT / 3)) lcp-echo-failure 3"
+fi
+
+case "$PPPTYPE" in
+	pptp)
+		[ -x "${PPTP:=$DEFAULT_PPTP}" ] || {
+			print_error "$PPTP does not exist or is not executable. Try installing pptp-client RPM."
+			exit 1
+		}
+		[ -n "$PPTP_SERVER" ] || {
+			print_error "ERROR: PPTP_SERVER is not set for interface $NAME with PPPTYPE $PPPTYPE"
+			exit 1
+		}
+		PTYOPTION="$PPTP --nolaunchpppd $PPTP_SERVER $PPTP_EXTRA_OPTIONS"
+	;;
+	pppoe)
+		[ -n "$HOST" ] || {
+			print_error "WARNING: HOST is not set for interface $NAME with PPPTYPE $PPPTYPE"
+			exit 1
+		}
+		PLUGINOPTION="plugin rp-pppoe.so $HOST"
+	;;
+	dialup)
+		BASIC_PPPOPTIONS="$BASIC_PPPOPTIONS modem"
+	;;
+	*)
+		print_error "unknown PPPTYPE '$PPPTYPE' for interface $NAME"
+	;;
+esac
+
+# Save default route(s)
+if is_yes "$RESTORE_DEFAULTROUTE"; then
+	$IP ro ls | grep ^default > /var/run/$NAME.defaultroute
+	[ -s /var/run/$NAME.defaultroute ] || rm -f /var/run/$NAME.defaultroute
+fi
+
+# Let the show start...
+$PPPD $BASIC_PPPOPTIONS $PPPOPTIONS \
+${PLUGINOPTION:+ $PLUGINOPTION} \
+${PTYOPTION:+local pty "$PTYOPTION"} \
+${PROF_PPPOPTIONSFILE:+ file $PROF_PPPOPTIONSFILE} \
+${PROF_PPPINITCHAT:+ init "$CHAT_CMD $PROF_PPPINITCHAT"} \
+${PROF_PPPCONNECTCHAT:+ connect "$CHAT_CMD $PROF_PPPCONNECTCHAT"} \
+${PROF_PPPDISCONNECTCHAT:+ disconnect "$CHAT_CMD $PROF_PPPDISCONNECTCHAT"}

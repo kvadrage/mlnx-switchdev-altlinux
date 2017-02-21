@@ -1,0 +1,13 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+: ${HOST:?HOST must be set for $NAME}
+: ${BONDOPTIONS:?BONDOPTIONS must be set for $NAME}
+
+$IP link add $NAME type bond mode ${BONDMODE:-$DEFAULT_BONDMODE} ${BONDOPTIONS//=/ }
+
+for host in $HOST; do
+	$IP link set $host down master $NAME && print_progress
+done

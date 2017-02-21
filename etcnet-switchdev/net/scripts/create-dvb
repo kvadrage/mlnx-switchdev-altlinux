@@ -1,0 +1,28 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+case "${DVBTYPE:?missing DVBTYPE option for $NAME, please fix}" in
+	ss223|ss226)
+		$MODPROBE dvb-core dvb_shutdown_timeout=0 dvb_powerdown_on_sleep=0
+		# This driver should support all of the SkyStar2 revisions
+		# and we shouldn't load frontends
+		$MODPROBE b2c2_flexcop_pci
+		[ -x "${DVBNET:=$DEFAULT_DVBNET}" ] || {
+			print_error "$DVBNET does not exist or is not executable for $NAME"
+			exit 1
+		}
+		$DVBNET -p $PID
+	;;
+	pentanet)
+		$MODPROBE pentanet
+	;;
+	pentaval)
+		$MODPROBE scanval
+		$MODPROBE pentaval
+	;;
+	*)
+		print_error "unknown DVB type '$DVBTYPE' for interface $NAME"
+	;;
+esac

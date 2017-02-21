@@ -1,0 +1,39 @@
+#!/bin/sh
+# This script can be placed in any interface config directory. If it
+# exists and is executable, it will be executed to return target
+# profile name on stdout. Applicable cases to use such a script are
+# for example notebooks with WiFi cards. The script could invoke iwlist
+# to discover a WAP and decide which profile to use. When combined with
+# removable WiFi card, this could mean that for reconfiguring interface
+# for a new environment it will be enough to unplug and plug back
+# the card. I could imagine some other applications for this feature.
+#
+# Original idea: Alexander Bokovoy
+# (http://www.livejournal.com/users/abbra/4508.html?mode=reply)
+# Improved by Igor Muratov
+
+iw_ap_address=$(iwlist $NAME scan | fgrep Address: | cut -d: -f2-|cut -d' ' -f2)
+
+for a in $iw_ap_address
+do
+	case $iw_ap_address in
+		11:11:11:11:11:11)
+			echo hotspot1
+			exit
+			;;
+		22:22:22:22:22:22)
+			echo hotspot2
+			exit
+			;;
+	esac
+done
+echo disabled
+
+# For this example to work one will also need to create files iwconfig.hotspot1,
+# iwconfig.hotspot2 and options.disabled like the following:
+## iwconfig.hotspot1
+# ap 11:11:11:11:11:11 essid essid1 key open s:key1
+## iwconfig.hotspot2
+# ap 22:22:22:22:22:22 essid essid2 key open s:key2
+## options.disabled
+# DISABLED=yes

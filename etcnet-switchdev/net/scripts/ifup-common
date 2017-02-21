@@ -1,0 +1,308 @@
+#!/bin/bash
+
+# This script continues configuration of an interface started by ifup,
+# ifup-removable or ifup-ifplugd scripts. We assume that all necessary
+# checks are done yet.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+pickup_defaults
+pickup_options
+
+# Bail out to let OpenVPN call the helper script upon completion.
+if [ "$TYPE" = "ovpn" ] && ! is_yes "$IN_OVPN"; then
+	exit 0
+fi
+
+#----------------+------+------+------+
+# USE_IFPLUGD:   | yes  | no   | auto |
+#----------------+------+------+------+
+# IN_IFPLUGD=yes |  A   |  B   |  C   |
+#----------------+------+------+------+
+# IN_IFPLUGD=no  |  D   |  E   |  F   |
+#----------------+------+------+------+
+# A: do nothing and continue
+# B: print error and exit
+# C: X ? A : B
+# D: start/resume ifplugd, then exit 0
+# E: do nothing and continue
+# F: X ? D : E
+# X: we have ifplugd and a good network card
+
+: ${IFPLUGD:=$DEFAULT_IFPLUGD}
+[ -z "$HAVE_IFPLUGD" ] && HAVE_IFPLUGD=`have_ifplugd`
+. $SCRIPTDIR/functions-eth
+case "$USE_IFPLUGD" in
+	[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|[Yy]|1)
+		# A and D
+		if ! is_yes "$IN_IFPLUGD"; then
+			# D
+			if is_yes "$CONFIG_WIRELESS" || is_yes "$CONFIG_DOT1X"; then
+				print_error "USE_IFPLUGD=yes and CONFIG_WIRELESS or CONFIG_DOT1X are mutually exclusive"
+				exit 1
+			fi
+			! is_yes "$HAVE_IFPLUGD" && exit 1
+			if is_yes "$PERSISTENT_IFPLUGD"; then
+				if ! ifplugd_runs; then
+					start_ifplugd
+				else
+					resume_ifplugd
+				fi
+			else
+				ifplugd_runs && stop_ifplugd
+				start_ifplugd
+			fi
+			exit 0
+		fi
+		# A
+	;;
+	[Aa][Uu][Tt][Oo])
+		# C and F
+		# Look for ifplugd existance.
+		if is_yes "$HAVE_IFPLUGD" && need_detection auto; then
+			# X
+			if ! is_yes "$IN_IFPLUGD"; then
+				# F/D
+				if is_yes "$PERSISTENT_IFPLUGD"; then
+					if ! ifplugd_runs; then
+						start_ifplugd
+					else
+						resume_ifplugd
+					fi
+				else
+					ifplugd_runs && stop_ifplugd
+					start_ifplugd
+				fi
+				exit 0
+			fi
+			# C/A
+		elif is_yes "$IN_IFPLUGD" ; then
+			# not X
+			# C/B
+			print_error "ERROR: USE_IFPLUGD=auto for $NAME, but IN_IFPLUGD=yes and card is unsupported"
+			exit 1
+		fi
+		# F/E
+	;;
+	*)
+		# B and E
+		if is_yes "$IN_IFPLUGD"; then
+			# B
+			print_error "ERROR: USE_IFPLUGD=no for $NAME, but IN_IFPLUGD=yes"
+			exit 1
+		fi
+		# E
+	;;
+esac
+
+process_sysctl_conf()
+{
+	local SRCFILE=${1:?missing 1st arg to $FUNCNAME}
+	local NAME=$2
+	local ONELINE
+	local VARPREFIX
+	[ -s $SRCFILE ] || return 0
+	$DENOISE $SRCFILE | sed "s/ //g" | while read ONELINE; do
+		local VARNAME=`echo $ONELINE  | cut -d'=' -f1`
+		local VARVALUE=`echo $ONELINE | cut -d'=' -f2`
+		# If variable name contains dot(s), we use it as is. Otherwise
+		# we append interface prefix.
+		if echo $VARNAME | fgrep -vq .; then
+			[ -z $NAME ] && {
+				print_error "Can't autocomplete sysctl variable name '$VARNAME' in file '$SRCFILE'. Please fix"
+				return 1
+			}
+			# try to guess prefix from variable name
+			# There should be a better way to build this case block...
+			case $VARNAME in
+			# *** IPv4 conf ***
+				force_igmp_version|disable_policy|disable_xfrm|arp_ignore|arp_announce)
+					VARPREFIX="net/ipv4/conf/$NAME/"
+				;;
+				arp_filter|tag|log_martians|bootp_relay|medium_id|proxy_arp)
+					VARPREFIX="net/ipv4/conf/$NAME/"
+				;;
+				accept_source_route|send_redirects|rp_filter|shared_media)
+					VARPREFIX="net/ipv4/conf/$NAME/"
+				;;
+				secure_redirects|mc_forwarding)
+					VARPREFIX="net/ipv4/conf/$NAME/"
+				;;
+			# *** IPv4 neigh ***
+				ipv4_locktime|ipv4_proxy_delay|ipv4_anycast_delay|ipv4_proxy_qlen|ipv4_unres_qlen)
+					VARNAME=${VARNAME#ipv4_}
+					VARPREFIX="net/ipv4/neigh/$NAME/"
+				;;
+				ipv4_gc_stale_time|ipv4_delay_first_probe_time|ipv4_base_reachable_time)
+					VARNAME=${VARNAME#ipv4_}
+					VARPREFIX="net/ipv4/neigh/$NAME/"
+				;;
+				ipv4_retrans_time|ipv4_app_solicit|ipv4_ucast_solicit|ipv4_mcast_solicit)
+					VARNAME=${VARNAME#ipv4_}
+					VARPREFIX="net/ipv4/neigh/$NAME/"
+				;;
+			# *** IPv6 conf ***
+				disable_ipv6|accept_ra|autoconf|dad_transmits|force_mld_version|hop_limit)
+					VARPREFIX="net/ipv6/conf/$NAME/"
+				;;
+				max_addresses|max_desync_factor|mtu|regen_max_retry)
+					VARPREFIX="net/ipv6/conf/$NAME/"
+				;;
+				router_solicitation_delay|router_solicitation_interval|router_solicitations)
+					VARPREFIX="net/ipv6/conf/$NAME/"
+				;;
+				temp_prefered_lft|temp_valid_lft|use_tempaddr)
+					VARPREFIX="net/ipv6/conf/$NAME/"
+				;;
+			# *** IPv6 neigh ***
+				ipv6_locktime|ipv6_proxy_delay|ipv6_anycast_delay|ipv6_proxy_qlen|ipv6_unres_qlen)
+					VARNAME=${VARNAME#ipv6_}
+					VARPREFIX="net/ipv6/neigh/$NAME/"
+				;;
+				ipv6_gc_stale_time|ipv6_delay_first_probe_time|ipv6_base_reachable_time)
+					VARNAME=${VARNAME#ipv6_}
+					VARPREFIX="net/ipv6/neigh/$NAME/"
+				;;
+				ipv6_retrans_time|ipv6_app_solicit|ipv6_ucast_solicit|ipv6_mcast_solicit)
+					VARNAME=${VARNAME#ipv6_}
+					VARPREFIX="net/ipv6/neigh/$NAME/"
+				;;
+			# *** IPv4/IPv6 common vars ***
+				ipv4_accept_redirects|ipv4_forwarding)
+					VARNAME=${VARNAME#ipv4_}
+					VARPREFIX="net/ipv4/conf/$NAME/"
+				;;
+				ipv6_accept_redirects|ipv6_forwarding)
+					VARNAME=${VARNAME#ipv6_}
+					VARPREFIX="net/ipv6/conf/$NAME/"
+				;;
+				*)
+					print_error "Can't autocomplete sysctl variable name '$VARNAME' in file '$SRCFILE'. Please fix"
+					return 1
+			esac
+		else
+			VARPREFIX=
+		fi
+		$SYSCTL -q -w $VARPREFIX$VARNAME=$VARVALUE
+	done
+	return 0
+}
+
+if ! is_yes $IN_WPA_CLI; then	# non-wifi or first pass for wifi
+# setup link-level params
+    xargise_file $IFACEDIR/default/iplink "$IP link set dev $NAME"
+    xargise_file $IFACEDIR/default/iplink-$TYPE "$IP link set dev $NAME"
+    xargise_file $MYIFACEDIR/iplink "$IP link set dev $NAME"
+
+# set VLANs for VLAN-aware bridge
+LINK_SHOW=`$IP -d link show $NAME`
+BRIDGE_SLAVE="bridge_slave"
+if [[ "$LINK_SHOW" =~ "$BRIDGE_SLAVE" ]]; then
+    if [ -n "$VLANS" ]; then
+        $BRIDGE vlan del vid 1-4094 dev $NAME
+        for vlan in $VLANS; do
+            $BRIDGE vlan add vid $vlan dev $NAME && print_progress
+        done
+    fi
+    if [ -n "$PVID" ]; then
+        $BRIDGE vlan add vid $PVID dev $NAME pvid untagged && print_progress
+    else
+        $BRIDGE vlan add vid 1 dev $NAME pvid untagged && print_progress
+    fi
+fi
+
+# bring iface up
+    if ! is_yes $KEEP_DOWN; then
+	$IP link set dev $NAME up && print_progress
+    fi
+fi
+
+# Handle wireless extensions, if any. config-wireless script return code
+# has to be treated in a special way, because in certain configurations
+# it implies ifplugd-like execution pattern, but in others it does not.
+# So we map actual return code to "go or no" deciscion according to the
+# list below:
+# 0: no error, no delayed helper in background, go on
+# 1: generic error
+# 10: no error, complete the rest via script executed by supplicant
+# 11: failed to run supplicant
+if is_yes "$CONFIG_WIRELESS" || is_yes "$CONFIG_DOT1X" ; then
+	if ! is_yes $IN_WPA_CLI; then
+		$SCRIPTDIR/config-wireless $NAME
+		rc=$?
+		[ $rc -eq 0 -o $rc -eq 10 ] || exit $rc
+		print_progress
+		[ $rc -eq 10 ] && exit 0 # wpa_cli hooks will complete the rest
+	fi
+fi
+
+# process ip neighbours
+xargise_file $MYIFACEDIR/ipneigh "$IP neigh replace dev $NAME"
+
+# first of all proccess iproute2 rules 
+is_yes "$CONFIG_IPV4" && $SCRIPTDIR/config-ipv4 $NAME start "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+is_yes "$CONFIG_IPV6" && $SCRIPTDIR/config-ipv6 $NAME start "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+is_yes "$CONFIG_IPX"  && $SCRIPTDIR/config-ipx $NAME start
+
+# get ipv4 and/or ipv6 addresses of the interface (after iproute2 rules processing)
+is_yes "$CONFIG_IPV4" && SourceIfNotEmpty $SCRIPTDIR/functions-ipv4 && IPV4ADDRESS="$(get_ipv4_addresses $NAME)"
+is_yes "$CONFIG_IPV6" && SourceIfNotEmpty $SCRIPTDIR/functions-ipv6 && IPV6ADDRESS="$(get_ipv6_addresses $NAME)"
+
+# start QoS and FireWall
+is_yes "$CONFIG_FW"   && $SCRIPTDIR/config-fw $NAME start "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+is_yes "$CONFIG_QOS"  && $SCRIPTDIR/config-qos $NAME start "${IPV4ADDRESS[*]}" "${IPV6ADDRESS[*]}"
+
+
+# handle sysctl file
+if profiled_filename GLOBAL_SYSCTL "$IFACEDIR/sysctl.conf"; then
+	process_sysctl_conf $GLOBAL_SYSCTL &&
+	print_progress
+fi
+
+if profiled_filename TYPESPEC_SYSCTL "$IFACEDIR/default/sysctl.conf-$TYPE"; then
+	process_sysctl_conf $TYPESPEC_SYSCTL $NAME &&
+	print_progress
+fi
+
+if profiled_filename MY_SYSCTL "$MYIFACEDIR/sysctl.conf"; then
+	process_sysctl_conf $MY_SYSCTL $NAME &&
+	print_progress
+fi
+
+# type-specific additional optional configuration
+ExecIfExecutable $SCRIPTDIR/setup-$TYPE $NAME && print_progress
+
+# ifup-post
+iface_is_up $NAME && {
+	# handle resolver config
+	if profiled_filename MYRESOLVCONF "$MYIFACEDIR/resolv.conf"; then
+		if [ -x "${RESOLVCONFTOOL:=$DEFAULT_RESOLVCONFTOOL}" ]; then
+			$RESOLVCONFTOOL -a $NAME < $MYRESOLVCONF
+		else
+			rm -f /etc/resolv.conf
+			cp $MYRESOLVCONF /etc/resolv.conf
+			[ -x "$RESOLV_POSTIN_CMD" ] && $RESOLV_POSTIN_CMD $RESOLV_POSTIN_ARGS
+		fi
+		print_progress
+	fi
+	ExecIfExecutable $LOCALSCRIPTDIR/ifup-post-local $NAME && print_progress
+	ExecIfExecutable $MYIFACEDIR/ifup-post $NAME && print_progress
+}
+
+# process deps
+if is_yes "$IFUP_CHILDREN"; then
+	IN_IFPLUGD=
+	ifup_children || {
+		print_error "Could not ifup children for parent iface '$NAME'"
+		exit 1
+	}
+fi
+
+exit 0

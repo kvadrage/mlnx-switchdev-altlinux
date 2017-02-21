@@ -1,0 +1,7 @@
+
+# There's no sense in leaving ghost interfaces upon ifdown. Dummy
+# interfaces have an unique kernel module each, so removing a module
+# for one doesn't kill another. So remove the renamed dummy module
+# on each ifdown.
+
+NEVER_RMMOD=0

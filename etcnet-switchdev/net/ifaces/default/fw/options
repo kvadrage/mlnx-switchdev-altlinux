@@ -1,0 +1,53 @@
+# Enabled types of the firewall. Now iptables, ip6tables and ebtables are supported.
+# Will start in the defined order. 
+# Value MUST be in the quotes, types MUST be separated by space
+#FW_TYPE="ipset iptables ip6tables ebtables"
+FW_TYPE="iptables"
+
+## IPTABLES options
+
+# Enable "human" iptables syntax
+IPTABLES_HUMAN_SYNTAX=no
+
+# List of built-in iptables chains
+IPTABLES_SYSTEM_CHAINS="PREROUTING INPUT FORWARD OUTPUT POSTROUTING"
+
+# Default policy for built-in chains. Can be ACCEPT, DROP, QUEUE, RETURN
+IPTABLES_INPUT_POLICY=ACCEPT
+IPTABLES_FORWARD_POLICY=ACCEPT
+IPTABLES_OUTPUT_POLICY=ACCEPT
+
+# Default type of rule embedding. Can be APPEND or INSERT
+IPTABLES_RULE_EMBEDDING=APPEND
+
+## IP6TABLES options
+
+# Enable "human" ip6tables syntax
+IP6TABLES_HUMAN_SYNTAX=no
+
+# List of built-in iptables chains
+IP6TABLES_SYSTEM_CHAINS="PREROUTING INPUT FORWARD OUTPUT POSTROUTING"
+
+# Default policy for built-in chains. Can be ACCEPT, DROP, QUEUE, RETURN
+IP6TABLES_INPUT_POLICY=ACCEPT
+IP6TABLES_FORWARD_POLICY=ACCEPT
+IP6TABLES_OUTPUT_POLICY=ACCEPT
+
+# Default type of rule embedding. Can be APPEND or INSERT
+IP6TABLES_RULE_EMBEDDING=APPEND
+
+## EBTABLES options
+
+# Enable "human" ebtables syntax. ebtables hasn't human syntax support now
+EBTABLES_HUMAN_SYNTAX=no
+
+# List of built-in iptables chains
+EBTABLES_SYSTEM_CHAINS="BROUTING PREROUTING INPUT FORWARD OUTPUT POSTROUTING"
+
+# Default policy for built-in chains. Can be ACCEPT, DROP, CONTINUE, RETURN or target extension
+EBTABLES_INPUT_POLICY=ACCEPT
+EBTABLES_FORWARD_POLICY=ACCEPT
+EBTABLES_OUTPUT_POLICY=ACCEPT
+
+# Default type of rule embedding. Can be APPEND or INSERT
+EBTABLES_RULE_EMBEDDING=APPEND
