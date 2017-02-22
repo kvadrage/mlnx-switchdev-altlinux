@@ -1,0 +1,26 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+: ${TUNTYPE:?missing TUNTYPE}
+: ${TUNLOCAL:?missing TUNLOCAL}
+: ${TUNREMOTE:?missing TUNREMOTE}
+
+case "${TUNTYPE:=ipip}" in
+	ipip)
+		MODULE=ipip
+		;;
+	gre)
+		MODULE=ip_gre
+		;;
+	sit)
+		MODULE=ipv6
+		;;
+	*)
+		print_error "TUNTYPE for $NAME must be either 'ipip', 'gre' or 'sit'"
+		exit 1
+esac
+$MODPROBE $MODULE
+
+$IP tunnel add $NAME mode $TUNTYPE local $TUNLOCAL remote $TUNREMOTE $TUNOPTIONS ${HOST:+dev $HOST}

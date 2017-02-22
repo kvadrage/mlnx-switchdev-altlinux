@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# suspends further action until Ethernet links comes up or
+# timeout expires. or both.
+check_eth_link()
+{
+	local TARGET="${1:?missing 1st arg to $FUNCNAME}"
+	local LMAX=${LINKDELAY:-0}
+	[ "$LMAX" -ge "0" -a "$LMAX" -le "300" ] || {
+		print_error "LINKDELAY exceeds 300 seconds"
+		return 2
+	}
+	[ -x "${IFPLUGSTATUS:=$DEFAULT_IFPLUGSTATUS}" ] || {
+		print_error "$IFPLUGSTATUS does not exist or is not executable. Try installing ifplugd RPM."
+		return 2
+	}
+	local i=0 result
+	# now loop, checking the link once a second
+	while true; do
+		$IFPLUGSTATUS -q $TARGET
+		result=$?
+		# The first positive check result satisfies us.
+		[ $result = 2 ] && return 0
+		# Otherwise continue, but don't make user think we have hung up.
+		print_progress '?'
+		sleep 1
+		[ $((++i)) -lt $LMAX ] || break
+	done
+	# There was not luck on the way, give up.
+	return 1
+}
+
+# see ifaces/default/options-eth
+wait_for_macaddr()
+{
+	local TARGET="${1:?missing 1st arg to $FUNCNAME}"
+	[ -z "$MACADDR_WAITTIME" ] && return
+	[ "$MACADDR_WAITTIME" -gt "0" -a "$MACADDR_WAITTIME" -le "1000" ] || {
+		print_error "MACADDR_WAITTIME exceeds 1000 (100 seconds)"
+		return
+	}
+	local i
+	for ((i=0; i<$MACADDR_WAITTIME; i++)) do
+		if $IP li sh dev $TARGET 2>/dev/null | fgrep -q 'link/ether 00:00:00:00:00:00'; then
+			usleep 100000
+		else
+			break
+		fi
+	done
+}
+
+ifplugd_runs()
+{
+	$IFPLUGD --check-running --iface=${1:-$NAME} >/dev/null
+}
+
+start_ifplugd()
+{
+	$IFPLUGD --iface=${1:-$NAME} --no-shutdown --ignore-fail --ignore-retval \
+		--run=$SCRIPTDIR/ifplugd.action $IFPLUGD_EXTRA_ARGS
+}
+
+stop_ifplugd()
+{
+	$IFPLUGD --kill --iface=${1:-$NAME}
+}
+
+resume_ifplugd()
+{
+	$IFPLUGD --resume --iface=${1:-$NAME}
+}
+
+suspend_ifplugd()
+{
+	$IFPLUGD --suspend --iface=${1:-$NAME}
+}

@@ -1,0 +1,9 @@
+#!/bin/bash
+
+pickup_defaults
+init_netprofile
+pickup_options
+
+for host in $HOST; do
+	$IP link set $host nomaster
+done

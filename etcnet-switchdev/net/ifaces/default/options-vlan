@@ -1,0 +1,4 @@
+# For detailed options description refer to etcnet-options(5) manpage,
+# section 'VLAN options'.
+
+#VLAN_REORDER_HDR=<0|1>

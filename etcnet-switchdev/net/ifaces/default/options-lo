@@ -1,0 +1,2 @@
+BOOTPROTO=static
+ONBOOT=yes

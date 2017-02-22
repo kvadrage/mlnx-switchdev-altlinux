@@ -1,0 +1,14 @@
+# Your role in a Bluetooth network.
+# Please see http://bluez.sourceforge.net/contrib/HOWTO-PAN
+PAN_ROLE=PANU
+
+# Your BT address. If you have one Bluetooth interface or you have specified mac
+# addresses in /etc/net/iftab for each your BT interface, this option will be calculated
+# automatically at runtime.
+#BLUEZ_LOCAL=<MAC_address>
+
+# Address of your peer. If not set, a search will be performed.
+#BLUEZ_REMOTE=<MAC-address>
+
+# Additional pand options.
+#PAND_OPTIONS=

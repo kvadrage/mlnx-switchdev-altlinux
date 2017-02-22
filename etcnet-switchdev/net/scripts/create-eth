@@ -1,0 +1,13 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+# If an administrator wishes to rely on modules.conf, let's agree.
+if [ -n "$MODULE" ]; then
+	for oneword in $MODULE; do
+		$MODPROBE $oneword
+	done
+else
+	$IP link set dev $NAME down
+fi

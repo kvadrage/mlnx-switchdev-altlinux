@@ -1,0 +1,2 @@
+# USB network interfaces are better handled by hotplug
+USE_HOTPLUG=yes

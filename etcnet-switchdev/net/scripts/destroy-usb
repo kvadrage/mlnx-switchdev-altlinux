@@ -1,0 +1,6 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+try_rmmod ${MODULE:-$NAME}

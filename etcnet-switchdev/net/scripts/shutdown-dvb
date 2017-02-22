@@ -1,0 +1,26 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+case "${DVBTYPE:?missing DVBTYPE option for $NAME, please fix}" in
+	ss223|ss226)
+	;;
+	pentanet)
+		[ -x "${PENTANETT:=$DEFAULT_PENTANETT}" ] || {
+			print_error "$PENTANETT does not exist or is not executable for $NAME"
+			exit 1
+		}
+		$PENTANETT -q -d $NAME
+	;;
+	pentaval)
+		[ -x "${PENTAVALT:=$DEFAULT_PENTAVALT}" ] || {
+			print_error "$PENTAVALT does not exist or is not executable for $NAME"
+			exit 1
+		}
+		$PENTAVALT -q -d $NAME
+	;;
+	*)
+		print_error "unknown DVB type '$DVBTYPE' for interface $NAME"
+	;;
+esac

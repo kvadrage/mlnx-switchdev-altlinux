@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# This script should be called when ppp link goes down, the most
+# natural way to do it is to have a hook in /etc/ppp/ip-down.d
+# directory. This scripts is not intended to be run directly,
+# one should use ifdown to shutdown a ppp link.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+[ -z "$SCRIPTDIR" ] && . ${SCRIPTDIR:=/etc/net/scripts}/functions
+pickup_defaults
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+	MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+	MYIFACEDIR=$IFACEDIR/$NAME
+fi
+export IFACEDIR MYIFACEDIR SCRIPTDIR NAME SEEN_IFACES
+
+init_netprofile
+pickup_options
+seen_iface $NAME && exit 0
+add_seen_iface $NAME
+
+# common part
+ifdown_children
+
+if iface_is_up $NAME; then
+	ExecIfExecutable $LOCALSCRIPTDIR/ifdown-pre-local $NAME && print_progress
+	ExecIfExecutable $MYIFACEDIR/ifdown-pre $NAME && print_progress
+	$IP link set dev $NAME down
+fi
+
+if is_yes "$RESTORE_DEFAULTROUTE" && [ -s /var/run/$NAME.defaultroute ]; then
+	xargise_file /var/run/$NAME.defaultroute "$IP ro ad"
+	rm -f /var/run/$NAME.defaultroute
+fi
+
+ExecIfExecutable $LOCALSCRIPTDIR/ifdown-post-local $NAME && print_progress
+ExecIfExecutable $MYIFACEDIR/ifdown-post $NAME && print_progress

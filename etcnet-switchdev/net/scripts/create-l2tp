@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# This script creates a L2TP TUNNEL
+
+# etcnet supposes that one directory == system network interface. Let us follow
+# this rule.
+
+# OpenL2TP has objects: TUNNEL, SESSION
+# Interface name is associated with SESSION object
+# So, introduce follow restricion: 1 iface = 1 TUNNEL, 1 SESSION
+
+# TUNNEL = IFACE NAME
+# SESSION = IFACE NAME
+
+# Command 'tunnel create opt1= opt2=...' is position independent
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+pickup_defaults
+pickup_options
+
+exit_handler()
+{
+	local rc=$1
+
+	# Stop OPENL2TP server in case tunnel startup was fail
+	if openl2tpd_is_active; then
+		if ! l2tp_session_established "$TUNNEL_NAME" "$SESSION_NAME"; then
+			# remove created tunnel early without session
+			l2tp_tunnel_stop "$TUNNEL_NAME"
+			l2tp_ppp_profile_stop "$PPP_PROFILE_NAME"
+		fi
+
+		# Wait for closing tunnels
+		local once=
+		for (( i=0; i < 50; i++ )); do
+			! $L2TPCONFIG 'tunnel list' | grep -q -s "CLOSING" && break
+			[ -z "$once" ] && print_message -n "Whait for closing tunnels" && once=1
+			print_progress
+			usleep 100000
+		done
+		[ -n "$once" ] && print_message
+
+		if ! l2tp_has_active_tunnels; then
+			openl2tpd_stop
+		fi
+	fi
+
+	exit $rc
+}
+
+trap 'exit 143' HUP INT QUIT TERM
+trap 'exit_handler $?' EXIT
+
+# Enter point
+
+# Start OPENL2TP server in case it off
+if ! openl2tpd_start; then
+	print_error "Can't start $OPENL2TPD"
+	exit 1
+fi
+
+# etcnet do not run this script in case interface exists
+# etcnet invokes create-script in case iface is absent
+# xxx: should we re-create tunnel? Yes.
+# This will also automatically destroy l2tp-session.
+if l2tp_tunnel_exists "$TUNNEL_NAME"; then
+	print_message "Old tunnel $TUNNEL_NAME already exists, destroy it."
+	l2tp_tunnel_stop "$TUNNEL_NAME"
+	# Check again... Sometimes it is easy to destroy tunnel.
+	if l2tp_tunnel_exists "$TUNNEL_NAME"; then
+		print_message "Old tunnel $TUNNEL_NAME still exists, giving up."
+		exit 1
+	fi
+fi
+
+# Destroy PPP profile. Make sure that there are not tunnels use it.
+if l2tp_ppp_profile_exists "$PPP_PROFILE_NAME"; then
+	print_message "Old ppp profile $PPP_PROFILE_NAME already exists, destroy it."
+	l2tp_ppp_profile_stop "$PPP_PROFILE_NAME"
+	# Check again... Sometimes it is easy to destroy tunnel.
+	if l2tp_ppp_profile_exists "$PPP_PROFILE_NAME"; then
+		print_message "Old ppp profile $PPP_PROFILE_NAME still exists, giving up."
+		exit 1
+	fi
+fi
+
+# Create PPP profile
+if ! l2tp_ppp_profile_start "$PPP_PROFILE_NAME"; then
+	exit 1
+fi
+
+# Start tunnel
+if ! l2tp_tunnel_start "$PPP_PROFILE_NAME" "$TUNNEL_NAME"; then
+	exit 1
+fi
+
+# Check again
+if ! l2tp_tunnel_exists "$TUNNEL_NAME"; then
+	print_message "Tunnel $TUNNEL_NAME does not exist."
+	exit 1
+fi
+
+# Start session
+if ! l2tp_session_start "$TUNNEL_NAME" "$SESSION_NAME"; then
+	# Suppose exit-handler do cleanup.
+	exit 1
+fi
+
+# Save default route(s)
+if is_yes "$RESTORE_DEFAULTROUTE"; then
+	$IP ro ls | grep ^default > /var/run/$NAME.defaultroute
+	[ -s /var/run/$NAME.defaultroute ] || rm -f /var/run/$NAME.defaultroute
+fi
+
+# success
+exit

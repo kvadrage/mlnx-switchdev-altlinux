@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# This script destroys a PPP interface.
+
+pickup_defaults
+pickup_options
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+l2tp_tunnel_stop "$TUNNEL_NAME"
+l2tp_ppp_profile_stop "$PPP_PROFILE_NAME"
+
+# Stop OPENL2TP server in case it does not manage any tunnels
+if openl2tpd_is_active; then
+	if ! l2tp_has_active_tunnels; then
+		openl2tpd_stop
+	fi
+fi

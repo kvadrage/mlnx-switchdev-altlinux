@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# This script prints difference in environment variables after
+# reading all options for the interface specified. Use it if you
+# are unsure about environment in which ifup or ifdown execute.
+
+usage()
+{
+	echo "Usage: ifdump <iface> --- dump options of a /etc/net interface"
+	exit 1
+}
+
+[ -z "$1" ] && usage
+F1=`mktemp -t ifdump.XXXXXXXXXX`
+F2=`mktemp -t ifdump.XXXXXXXXXX`
+typeset > $F1
+
+export NAME=$1
+
+if [ -z "$SCRIPTDIR" ]; then
+	export SCRIPTDIR=/etc/net/scripts
+	. $SCRIPTDIR/functions
+fi
+
+pickup_defaults
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+	MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+	MYIFACEDIR=$IFACEDIR/$NAME
+fi
+
+[ -d "$MYIFACEDIR" ] || {
+	print_error "interface configuration directory '$MYIFACEDIR' not found"
+	exit 1
+}
+export MYIFACEDIR NETPROFILE
+
+init_netprofile
+pickup_options
+
+typeset > $F2
+diff -u $F1 $F2 | egrep '^\+[[:alpha:]][[:alnum:]_]*=' | sed 's/^\+//'
+rm -f $F1 $F2

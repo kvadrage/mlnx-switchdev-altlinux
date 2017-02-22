@@ -1,0 +1,9 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+: ${HOST:?HOST is missing for $NAME}
+: ${VID:?VID is missing for $NAME}
+
+destroy_vlan_iface $HOST $VID $NAME

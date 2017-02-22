@@ -1,0 +1,31 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -x "${OSSH:=$DEFAULT_OSSH}" ] || {
+    print_error "$OSSH does not exist or is not executable. Try installing openssh-clients RPM."
+    exit 1
+}
+
+[ -n "$REMOTE" ] || {
+    print_error "empty REMOTE variable. can't proceed."
+    exit 1
+}
+
+[ -S "/var/run/etcnet-ossh-$NAME" ] && {
+    $OSSH -q -o "ControlPath /var/run/etcnet-ossh-$NAME" -O exit ${REMOTE} 2> /dev/null
+}
+
+if is_yes "$IFUP_REMOTE"; then
+    OSSHIDENTITY="$MYIFACEDIR/${OSSHIDENTITY:-$DEFAULT_OSSHIDENTITY}"
+    if profiled_filename IDENTITY "$OSSHIDENTITY"; then
+	$OSSH -i "$IDENTITY" ${REMOTEPORT:+-p $REMOTEPORT} \
+	    ${REMOTEUSER:+$REMOTEUSER@}${REMOTE} ${REMOTEIFDOWN:-/sbin/ifdown $REMOTEIF}
+	[ $? -eq 0 ] || print_error "failed to bring remote iface $REMOTEIF down"
+    else
+	print_error "identity file '$OSSHIDENTITY' does not exist"
+    fi
+fi
+
+$IP link del "$NAME"

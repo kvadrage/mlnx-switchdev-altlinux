@@ -1,0 +1,711 @@
+#!/bin/bash
+# etcnet firewall handler
+
+# Known issues:
+# 1. When interface is 'all' we can't guess correct interfaces processing order
+#    like etcnet does so process it by bash sort order
+# 2. Guessing may not work correct
+
+# default values
+NAME=default
+TABLE=filter
+CHAIN=
+MYIFACEDIR=
+PROCESS_IPSET=yes
+PROCESS_IPTABLES=yes
+PROCESS_IP6TABLES=yes
+PROCESS_EBTABLES=yes
+TABLES=
+IPSET_TABLES="ipmap macipmap portmap iphash nethash ipporthash ipportiphash ipportnethash iptree iptreemap setlist"
+IPTABLES_TABLES="mangle filter nat"
+IP6TABLES_TABLES="mangle filter"
+EBTABLES_TABLES="broute filter nat"
+ACTIONS="start stop restart load unload reload flush show list count counters rule new create remove delete zero policy rename"
+
+usage()
+{
+    echo '/etc/net FireWall handler'
+    echo "Usage: $0 --ips[et]|[--ipt[ables]|--ip6t[ables]|--ebt[ables]|--no-ips[et]|--no-ipt[ables]|--no-ip6t[ables]|--no-ebt[ables]] [iface] [table|settype] [chain|set] <action> [firewall rule or action options]" >&2
+    echo ""
+    echo " --ipset        - process only with ipset firewall"
+    echo " --iptables     - process only with iptables firewall"
+    echo " --ip6tables    - process only with ip6tables firewall"
+    echo " --ebtables     - process only with ebtables firewall"
+    echo " --no-iptables  - process with all types but without iptables"
+    echo " --no-ip6tables - process with all types but without ip6tables"
+    echo " --no-ebtables  - process with all types but without ebtables"
+    echo " By default all enabled types will be processed"
+    echo ""
+    echo " iface    - 'default' (by default), real interface name or 'all' for all interfaces"
+    echo " table    - 'mangle' (iptables and ip6tables only), 'broute' (ebtables only), 'filter' (by default), 'nat' or 'all' for all tables"
+    echo " chain    -  system or user defined chain name (case sensitive!) or 'all' for all chains"
+    echo " action   - 'start','stop','restart','load','unload','reload','flush','show|list','count|counters','rule','new|create','remove|delete','zero','policy','rename'"
+    echo ""
+    echo " start    - process all tables and chains for given interface (even when chain or table is defined)"
+    echo " stop     - process all tables and chains for given interface (even when chain or table is defined)"
+    echo " restart  - equivalent to 'stop' then 'start'"
+    echo " load     - load rules for given interface, table and chain"
+    echo " unload   - unload rules for given interface, table and chain"
+    echo " reload   - equivalent to 'unload' then 'load'"
+    echo " flush    - flush rules for given interface, table and chain"
+    echo " show     - list rules for given interface, table and chain"
+    echo " list     - same as 'show'"
+    echo " count    - show counters for given table and chains"
+    echo " counters - same as 'count'"
+    echo " rule     - parse rule and pass it to iptables and/or ip6tables and/or ebtables"
+    echo " new      - create new chain"
+    echo " create   - same as 'new'"
+    echo " remove   - remove chain"
+    echo " delete   - same as 'remove'"
+    echo " zero     - zero packet and byte counters in chain"
+    echo " policy   - set default policy for chain"
+    echo " rename   - rename chain"
+    echo ""
+    echo "Options for action 'show' or 'list':"
+    echo " -n or numeric - numeric output for IP addresses, ports and services"
+    echo " -v or verbose - verbose output of rules"
+    echo " -x or exact   - expand numbers instead of rounded numbers"
+    echo " --line-numbers or lines - display line number for each rule" 
+    echo ""
+    exit 1
+}
+
+guess_options()
+{
+    # Four options. Get interface name and shift
+    [ $# -ge 4 ] && 
+	{
+	    NAME="$1"
+	    [ "$NAME" != "default" ] && [ "$NAME" != "all" ] && 
+		{
+		    [ -d $IFACEDIR/$NAME@$NETHOST ] && MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST || MYIFACEDIR=$IFACEDIR/$NAME
+		    [ -d "$MYIFACEDIR" ] ||
+			{
+			    print_error "interface configuration directory \"$MYIFACEDIR\" is not found"
+			    exit 1
+			}
+		}
+	    # FIXME variable TABLES must be reworked 
+	    [ "$2" = "all" ] || egrep -q "([^-]\b|^)$2(\b[^-]|$)" < <(echo "$TABLES") && TABLE="$2" ||
+		{
+		    print_error "Unknown firewall table \"$2\""
+		    exit 1
+		}
+	    CHAIN="$3"
+	    egrep -q "([^-]\b|^)$4(\b[^-]|$)" < <(echo "$ACTIONS") && ACTION="$4" ||
+		{
+		    print_error "Unknown firewall action \"$4\""
+		    exit 1
+		}
+	    return
+	}
+
+    # Three options. Guess first and shift
+    [ $# -eq 3 ] && 
+	{
+	    [ "$1" != "default" ] && [ "$1" != "all" ]  && 
+		{
+		    # May be it's an interface name
+		    [ -d $IFACEDIR/$1@$NETHOST ] && MYIFACEDIR=$IFACEDIR/$1@$NETHOST || MYIFACEDIR=$IFACEDIR/$1
+		    [ -d "$MYIFACEDIR" ] &&
+			{
+			    # Yes, it's an interface name
+			    NAME="$1"
+			    {
+				# FIXME variable TABLES must be reworked 
+				[ "$2" = "all" ] || egrep -q "([^-]\b|^)$2(\b[^-]|$)" < <(echo "$TABLES") && TABLE="$2"
+			    } || CHAIN="$2"
+			} ||
+			{
+			    # No, it's not an interface name
+			    MYIFACEDIR=
+			    # FIXME variable TABLES must be reworked 
+			    [ "$1" = "all" ] || egrep -q "([^-]\b|^)$1(\b[^-]|$)" < <(echo "$TABLES") && 
+				{
+				    TABLE="$1"
+				    CHAIN="$2"
+				} || 
+				{
+				    print_error "Unknown firewall table \"$1\""
+				    exit 1
+				}
+			}
+	    } ||
+	    {
+		# Yes, it's an interface name or 'all'
+		NAME="$1"
+		{
+		    # FIXME variable TABLES must be reworked 
+		    [ "$2" = "all" ] || egrep -q "([^-]\b|^)$2(\b[^-]|$)" < <(echo "$TABLES") && TABLE="$2"
+		} || CHAIN="$2"
+	    }
+	    shift 2
+	}
+
+    # Two options. Guest first and shift
+    [ $# -eq 2 ] && 
+	{
+	    [ "$1" != "default" ] && [ "$1" != "all" ] && 
+		{
+		    # May be it's and interface name
+		    [ -d $IFACEDIR/$1@$NETHOST ] && MYIFACEDIR=$IFACEDIR/$1@$NETHOST || MYIFACEDIR=$IFACEDIR/$1
+		    [ -d "$MYIFACEDIR" ] &&
+			{
+			    # Yes, it's an interface name
+			    NAME="$1"
+			} ||
+			{
+			    # No
+			    MYIFACEDIR=
+				{
+				# FIXME variable TABLES must be reworked 
+				    [ "$1" = "all" ] || egrep -q "([^-]\b|^)$1(\b[^-]|$)" < <(echo "$TABLES") && TABLE="$1"
+				} || CHAIN="$1"
+			}
+		} ||
+		{
+		    # Yes, it's an interface name or 'all'
+		    NAME="$1"
+		}
+		shift
+	
+	}
+
+    # One option
+    [ $# -eq 1 ] &&
+	{
+	    egrep -q "([^-]\b|^)$1(\b[^-]|$)" < <(echo "$ACTIONS") && ACTION=$1 ||
+		{
+		    print_error "Unknown firewall action \"$1\""
+		    exit 1
+		}
+	}
+}
+
+# xtables suff
+xtables_local_rules_from_file()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN=${2:?missing 2nd arg to $FUNCNAME}
+    shift 2
+    [ "$TABLE" = "all" ] && TABLE="*"
+    [ "$CHAIN" = "all" ] && CHAIN="*"
+    for CTABLE in $TABLE; do
+	[ -d "$CTABLE" ] || continue
+	for CCHAIN in "$CTABLE"/$CHAIN; do
+	    CCHAIN=$(basename $CCHAIN)
+	    [ "$CTABLE/$CCHAIN" != "$CTABLE/loadorder" -a  -f "$CTABLE/$CCHAIN" -a \
+	    "$CTABLE/${CCHAIN%.rpm*}" = "$CTABLE/$CCHAIN" -a "$CTABLE/${CCHAIN%\~}" = "$CTABLE/$CCHAIN" ] || continue
+	    [ "$1" = "unload" ] && xtables_flush_rules_from_file "$CTABLE/$CCHAIN" "$2" ||
+		{
+		    [ -s "$CTABLE/$CCHAIN" ] && xtables_load_rules_from_file "$CTABLE/$CCHAIN"
+		}
+	done
+    done
+}
+
+xtables_local_rule()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN=${2:?missing 2nd arg to $FUNCNAME}
+    shift 2
+    local RULE
+    [ "$TABLE" = "all" ] && TABLE="*"
+    [ "$CHAIN" = "all" ] && CHAIN="*"
+    RULE=$(xtables_expand_string $@)
+    [ -z "$RULE" ] && return
+    for CTABLE in $TABLE; do
+	[ -d "$CTABLE" ] || continue
+	for CCHAIN in "$CTABLE"/$CHAIN; do
+	    CCHAIN=$(basename $CCHAIN)
+	    [ "$CTABLE/$CCHAIN" != "$CTABLE/loadorder" -a  -f "$CTABLE/$CCHAIN" -a \
+	    "$CTABLE/${CCHAIN%.rpm*}" = "$CTABLE/$CCHAIN" -a "$CTABLE/${CCHAIN%\~}" = "$CTABLE/$CCHAIN" ] || continue
+	    read FIRST SECOND REST < <(echo $RULE)
+	    case $FIRST in
+		"-A"|"-D"|"-I")
+			    xtables_push_rule $CTABLE $FIRST $CCHAIN $SECOND $REST
+			    ;;
+		"-P")
+			    xtables_chain_policy $CTABLE $(echo $CCHAIN $SECOND $REST|sed -e 's/-j//g')
+			    ;;
+		*)
+			    xtables_push_rule $CTABLE $CCHAIN $FIRST $SECOND $REST
+			    ;;
+	    esac
+	done
+    done
+}
+
+xtables_local_create_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN=${2:?missing 2nd arg to $FUNCNAME}
+    shift 2
+    [ "$TABLE" = "all" ] && TABLE=$(xtables_expand_variable $XTABLES TABLES)
+    for CTABLE in $TABLE; do
+	xtables_create_chain $CTABLE $CHAIN
+    done
+}
+
+xtables_local_delete_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN=$2
+    shift $#
+    [ "$TABLE" = "all" ] && TABLE=$(xtables_expand_variable $XTABLES TABLES)
+    for CTABLE in $TABLE; do
+	# We can delete only user-defined chains so just don't pass chain name
+	# in case of 'all' chain
+	[ "$CHAIN" = "all" ] && xtables_delete_chain $CTABLE || iptables_delete_chain $CTABLE $CHAIN
+    done
+}
+
+xtables_local_list_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN=$2
+    [ -z "$CHAIN" ] && shift || shift 2
+    local LIST_ARGS
+    [ $# -eq 0 ] ||
+	{
+	    xtables_preload
+	    LIST_ARGS=$(xtables_expand_string $@)
+	}
+    [ "$TABLE" = "all" ] && TABLE=$(xtables_expand_variable $XTABLES TABLES)
+    for CTABLE in $TABLE; do
+	printf "\nTable $CTABLE\n\n"
+	[ "$CHAIN" = "all" ] && xtables_list_chain $CTABLE $LIST_ARGS || xtables_list_chain $CTABLE $CHAIN $LIST_ARGS
+    done
+}
+
+xtables_local_zero_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN=$2
+    shift $#
+    [ "$TABLE" = "all" ] && TABLE=$(xtables_expand_variable $XTABLES TABLES)
+    for CTABLE in $TABLE; do
+	[ "$CHAIN" = "all" ] && xtables_zero_chain $CTABLE || xtables_zero_chain $CTABLE $CHAIN
+    done
+}
+
+xtables_local_rename_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN=${2:?missing 2nd arg to $FUNCNAME}
+    shift 2
+    [ "$TABLE" = "all" ] && TABLE=$(xtables_expand_variable $XTABLES TABLES)
+    for CTABLE in $TABLE; do
+	xtables_rename_chain $CTABLE $CHAIN $@
+    done
+}
+
+ipset_local_action()
+{
+    case "$ACTION" in
+	start)
+		ipset_start "$NAME"
+		;;
+	stop)
+		ipset_stop "$NAME"
+		;;
+	restart)
+		ipset_stop "$NAME"
+		ipset_start "$NAME"
+		;;
+	load|unload|reload|flush)
+		print_error "Not implemented yet"
+		;;
+	show|list)
+		$IPSET -L
+		;;
+	count|counters)
+		print_error "Not implemented yet"
+		exit 1
+		;;
+	rule)
+		print_error "Not implemented yet"
+		;;
+	new|create|remove|delete|zero|rename)
+		print_error "Not implemented yet"
+		;;
+	policy)
+		print_error "Not implemented yet"
+		;;
+	*)
+		usage
+		;;
+	esac
+}
+
+xtables_local_action()
+{
+    case "$ACTION" in
+	start)
+		xtables_preload
+		xtables_start "$NAME"
+		;;
+	stop)
+		xtables_preload
+		xtables_stop "$NAME"
+		;;
+	restart)
+		xtables_preload
+		xtables_stop "$NAME"
+		xtables_start "$NAME"
+		;;
+	load)
+		xtables_preload
+		cd "$cfwdir"
+		xtables_local_rules_from_file $TABLE $CHAIN
+		;;
+	unload)
+		xtables_preload
+		cd "$cfwdir"
+		xtables_local_rules_from_file $TABLE $CHAIN unload
+		;;
+	reload)
+		xtables_preload
+		cd "$cfwdir"
+		xtables_local_rules_from_file $TABLE $CHAIN unload
+		xtables_local_rules_from_file $TABLE $CHAIN
+		;;
+	flush)
+		xtables_preload
+		cd "$cfwdir"
+		xtables_local_rules_from_file $TABLE $CHAIN unload flush
+		;;
+	show|list)
+		# FIXME BROKEN Double shift after each
+		# iteration
+		case $# in
+		    1)
+		    shift 1
+		    ;;
+		    2)
+		    shift 2
+		    ;;
+		    3)
+		    shift 3
+		    ;;
+		    *)
+		    shift 4
+		    ;;
+		esac
+		xtables_local_list_chain $TABLE $CHAIN $@
+		;;
+	count|counters)
+		print_error "Not implemented yet"
+		exit 1
+		;;
+	rule)
+		# FIXME BROKEN Double shift after each
+		# iteration
+		case $# in
+		    1)
+		    shift 1
+		    ;;
+		    2)
+		    shift 2
+		    ;;
+		    3)
+		    shift 3
+		    ;;
+		    *)
+		    shift 4
+		    ;;
+		esac
+		xtables_preload
+		cd "$cfwdir"
+		xtables_local_rule $TABLE $CHAIN $@
+		;;
+	new|create)
+		xtables_local_create_chain $TABLE $CHAIN
+		;;
+	remove|delete)
+		xtables_local_delete_chain $TABLE $CHAIN
+		;;
+	zero)
+		xtables_local_zero_chain $TABLE $CHAIN
+		;;
+	policy)
+		# FIXME BROKEN Double shift after each
+		# iteration
+		case $# in
+		    1)
+		    shift 1
+		    ;;
+		    2)
+		    shift 2
+		    ;;
+		    3)
+		    shift 3
+		    ;;
+		    *)
+		    shift 4
+		    ;;
+		esac
+		xtables_preload
+		cd "$cfwdir"
+		xtables_local_rule $TABLE $CHAIN -P $@
+		;;
+	rename)
+		# FIXME BROKEN Double shift after each
+		# iteration
+		case $# in
+		    1)
+		    shift 1
+		    ;;
+		    2)
+		    shift 2
+		    ;;
+		    3)
+		    shift 3
+		    ;;
+		    *)
+		    shift 4
+		    ;;
+		esac
+		xtables_local_rename_chain $TABLE $CHAIN $@
+		;;
+	*)
+		usage
+		;;
+	esac
+}
+
+# Be verbose in any way
+export VERBOSE=on
+export PROGRESS=on
+
+[ -s ${SCRIPTDIR:=/etc/net/scripts}/functions ] ||
+{
+    echo "ERROR: $SCRIPTDIR/functions not found!"
+    exit 1
+}
+
+. ${SCRIPTDIR:=/etc/net/scripts}/functions
+pickup_defaults
+
+[ -s ${SCRIPTDIR:=/etc/net/scripts}/functions-fw ] ||
+{
+    print_error "$SCRIPTDIR/functions-fw not found!"
+    exit 1
+}
+
+. ${SCRIPTDIR:=/etc/net/scripts}/functions-fw
+
+[ -z "$NETPROFILE" ] && init_netprofile
+
+! profiled_filename opts /etc/net/ifaces/default/options || . "$opts"
+
+is_yes "$CONFIG_FW" ||
+{
+    print_message "Firewall is disabled"
+    exit 1
+}
+
+! profiled_filename fwopts /etc/net/ifaces/default/fw/options || . "$fwopts"
+
+# FIXME variable TABLES must be reworked 
+case "$1" in
+    --ips*)
+			PROCESS_IPSET=yes
+			PROCESS_IPTABLES=no
+			PROCESS_IP6TABLES=no
+			PROCESS_EBTABLES=no
+			TABLES=$IPSET_TABLES
+			shift
+			;;
+    --ipt*)
+			PROCESS_IPSET=no
+			PROCESS_IPTABLES=yes
+			PROCESS_IP6TABLES=no
+			PROCESS_EBTABLES=no
+			TABLES=$IPTABLES_TABLES
+			shift
+			;;
+    --ip6t*)
+			PROCESS_IPSET=no
+			PROCESS_IPTABLES=no
+			PROCESS_IP6TABLES=yes
+			PROCESS_EBTABLES=no
+			TABLES=$IP6TABLES_TABLES
+			shift
+			;;
+    --ebt*)
+			PROCESS_IPSET=no
+			PROCESS_IPTABLES=no
+			PROCESS_IP6TABLES=no
+			PROCESS_EBTABLES=yes
+			TABLES=$EBTABLES_TABLES
+			shift
+			;;
+    --no-ips*)
+			PROCESS_IPSET=no
+			TABLES="$IPTABLES_TABLES $IP6TABLES_TABLES $EBTABLES_TABLES"
+			shift
+			;;
+    --no-ipt*)
+			PROCESS_IPTABLES=no
+			TABLES="$IPSET_TABLES $IP6TABLES_TABLES $EBTABLES_TABLES"
+			shift
+			;;
+    --no-ip6t*)
+			PROCESS_IP6TABLES=no
+			TABLES="$IPSET_TABLES $IPTABLES_TABLES $EBTABLES_TABLES"
+			shift
+			;;
+    --no-ebt*)
+			PROCESS_EBTABLES=no
+			TABLES="$IPSET_TABLES $IPTABLES_TABLES $IP6TABLES_TABLES"
+			shift
+			;;
+    *)
+			# FIXME we must look at the FW_TYPE
+			TABLES="$IPSET_TABLES $IPTABLES_TABLES $IP6TABLES_TABLES $EBTABLES_TABLES"
+			;;
+esac
+
+[ $# -lt 1 ] && usage || guess_options $@
+
+
+print_message "Interface is \"$NAME\""
+print_message "Table is \"$TABLE\""
+print_message "Chain is \"$CHAIN\""
+print_message "Action is \"$ACTION\""
+print_message
+
+[ "$NAME" = "all" ] && NAME="*"
+
+for IFACE in "$IFACEDIR"/$NAME; do
+    [ -d "$IFACE" ] || continue
+    NAME=$(basename $IFACE)
+    [ "$NAME" = "default" -o "$NAME" = "unknown" ] || pickup_options
+    [ -z "$MYIFACEDIR" ] &&
+	{
+	    [ -d $IFACEDIR/$NAME@$NETHOST ] && MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST || MYIFACEDIR=$IFACEDIR/$NAME
+	}
+    ! profiled_filename fwopts "$MYIFACEDIR/fw/options" || . "$fwopts"
+    is_yes "$CONFIG_IPV4" && SourceIfNotEmpty $SCRIPTDIR/functions-ipv4 && export IPV4ADDRESS=( $(get_ipv4_addresses $NAME) )
+    is_yes "$CONFIG_IPV6" && SourceIfNotEmpty $SCRIPTDIR/functions-ipv6 && export IPV6ADDRESS=( $(get_ipv6_addresses $NAME) )
+    for CFW_TYPE in $FW_TYPE; do
+	case "$CFW_TYPE" in
+	    "ipset")
+			is_yes "$PROCESS_IPSET" || continue
+			is_yes "$CONFIG_IPV4" || continue
+			profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    {
+				 print_message "No \"$CFW_TYPE\" firewall is configured for interface \"$NAME\""
+				 print_message
+				 continue
+			    }
+			[ -x "$IPSET" ] || 
+			    {
+				print_error "$IPSET not found. Please, install ipset package"
+				print_message
+				continue
+			    }
+			print_message "Firewall type is \"$CFW_TYPE\""
+			[ "$NAME" != "default" ] && pickup_options
+			# Load own interface syntax if exists
+			[ "$NAME" != "default" ] && is_yes "$IPSET_HUMAN_SYNTAX" &&
+			    {
+				[ -s "$cfwdir/syntax" ] &&
+				    {
+					export IPSET_SYNTAX_DIR="$cfwdir"
+					unset IPSET_SYNTAX IPSET_SED_RULES
+				    }
+			    }
+
+			XTABLES=IPSET ipset_local_action "$@"
+			print_message
+			;;
+	    "iptables")
+			is_yes "$PROCESS_IPTABLES" || continue
+			# FIXME Does iptables support only IPv4?
+			is_yes "$CONFIG_IPV4" || continue
+			profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    {
+				 print_message "No \"$CFW_TYPE\" firewall is configured for interface \"$NAME\""
+				 print_message
+				 continue
+			    }
+			[ -x "$IPTABLES" ] || 
+			    {
+				print_error "$IPTABLES not found. Please, install iptables package"
+				print_message
+				continue
+			    }
+			print_message "Firewall type is \"$CFW_TYPE\""
+			[ "$NAME" != "default" ] && pickup_options
+			# Load own interface syntax if exists
+			[ "$NAME" != "default" ] && is_yes "$IPTABLES_HUMAN_SYNTAX" &&
+			    {
+				[ -s "$cfwdir/syntax" ] &&
+				    {
+					export IPTABLES_SYNTAX_DIR="$cfwdir"
+					unset IPTABLES_SYNTAX IPTABLES_SED_RULES
+				    }
+			    }
+
+			XTABLES=IPTABLES xtables_local_action "$@"
+			print_message
+			;;
+	    "ip6tables")
+			is_yes "$PROCESS_IP6TABLES" || continue
+			# FIXME Does ip6tables support only IPv6?
+			is_yes "$CONFIG_IPV6" || continue
+			profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    {
+				 print_message "No \"$CFW_TYPE\" firewall is configured for interface \"$NAME\""
+				 print_message
+				 continue
+			    }
+			[ -x "$IP6TABLES" ] || 
+			    {
+				print_error "$IP6TABLES not found. Please, install iptables-ipv6 package"
+				print_message
+				continue
+			    }
+			print_message "Firewall type is \"$CFW_TYPE\""
+			[ "$NAME" != "default" ] && pickup_options
+			# Load own interface syntax if exists
+			[ "$NAME" != "default" ] && is_yes "$IP6TABLES_HUMAN_SYNTAX" &&
+			    {
+				[ -s "$cfwdir/syntax" ] &&
+				    {
+					export IP6TABLES_SYNTAX_DIR="$cfwdir"
+					unset IP6TABLES_SYNTAX IP6TABLES_SED_RULES
+				    }
+			    }
+
+			XTABLES=IP6TABLES xtables_local_action "$@"
+			print_message
+			;;
+  	    "ebtables")
+			is_yes "$PROCESS_EBTABLES" || continue
+			profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    {
+				 print_message "No \"$CFW_TYPE\" firewall is configured for interface \"$NAME\""
+				 print_message
+				 continue
+			    }
+			[ -x "$EBTABLES" ] || 
+			    {
+				print_error "$EBTABLES not found. Please, install ebtables package"
+				print_message
+				continue
+			    }
+			print_message "Firewall type is \"$CFW_TYPE\""
+			[ "$NAME" != "default" ] && pickup_options
+			XTABLES=EBTABLES xtables_local_action "$@"
+			print_message
+			;;
+		*)
+			print_error "Firewall type \"$CFW_TYPE\" isn't supported"
+			;;
+	esac
+    done
+    MYIFACEDIR=""
+done

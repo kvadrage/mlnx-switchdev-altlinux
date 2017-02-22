@@ -1,0 +1,61 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -x "${OVPN:=$DEFAULT_OVPN}" ] || {
+	print_error "$OVPN does not exist or is not executable. Try installing openvpn RPM."
+	exit 1
+}
+
+modprobe_tuntap || {
+	print_error "tuntap control node does not exist"
+	exit 1
+}
+
+is_yes "$RESTORE_DEFAULTROUTE" && { # Save default route(s)
+	[ -d $OVPNRUNDIR ] || 
+	{
+		print_error "OpenVPN rundir $OVPNRUNDIR does not exist"
+		exit 1
+	}
+	$IP route ls | grep ^default > $OVPNRUNDIR/openvpn-iface-$NAME.defaultroute
+	[ -s $OVPNRUNDIR/openvpn-iface-$NAME.defaultroute ] || \
+		rm -f $OVPNRUNDIR/openvpn-iface-$NAME.defaultroute
+}
+
+OVPN_USER=${OVPNUSER:-$DEFAULT_OVPNUSER}
+OVPN_GROUP=${OVPNGROUP:-$DEFAULT_OVPNGROUP}
+KEY_ARGS=
+
+if profiled_filename PROF_CONFFILE "$MYIFACEDIR/${OVPNCONFFILE:-$DEFAULT_OVPNCONFFILE}"; then
+	if egrep '^[[:space:]]*(tls-client|tls-server|client)[[:space:]]*' "$PROF_CONFFILE" >/dev/null; then
+		! profiled_filename PROF_CAFILE "$MYIFACEDIR/${OVPNCAFILE:-$DEFAULT_OVPNCAFILE}" ||
+			KEY_ARGS="--ca $PROF_CAFILE"
+
+		! profiled_filename PROF_CRTFILE "$MYIFACEDIR/${OVPNCRTFILE:-$DEFAULT_OVPNCRTFILE}" ||
+			KEY_ARGS="$KEY_ARGS --cert $PROF_CRTFILE"
+
+		! profiled_filename PROF_TLSAUTHFILE "$MYIFACEDIR/${OVPNTLSAUTHFILE:-$DEFAULT_OVPNTLSAUTHFILE}" ||
+			KEY_ARGS="$KEY_ARGS --tls-auth $PROF_TLSAUTHFILE"
+
+		! profiled_filename PROF_KEYFILE "$MYIFACEDIR/${OVPNKEYFILE:-$DEFAULT_OVPNKEYFILE}" ||
+			KEY_ARGS="$KEY_ARGS --key $PROF_KEYFILE"
+	else
+		! profiled_filename PROF_KEYFILE "$MYIFACEDIR/${OVPNKEYFILE:-$DEFAULT_OVPNKEYFILE}" ||
+			KEY_ARGS="$KEY_ARGS --secret $PROF_KEYFILE"
+	fi
+fi
+
+if [ ! -d $OVPNCHROOTDIR/cache ]; then
+	print_error "OpenVPN cache dir $OVPNCHROOTDIR/cache does not exist"
+	exit 1
+fi
+
+$OVPN --dev $NAME --daemon \
+	${PROF_CONFFILE:+ --config $PROF_CONFFILE} $KEY_ARGS $TLSAUTH_ARGS \
+	${OVPN_USER:+ --user $OVPN_USER --persist-tun --persist-key} \
+	${OVPN_GROUP:+ --group $OVPN_GROUP} \
+	--cd $OVPNCHROOTDIR/cache --chroot $OVPNCHROOTDIR --tmp-dir /tmp \
+	--writepid $OVPNRUNDIR/openvpn-iface-$NAME.pid \
+	--up $SCRIPTDIR/openvpn.action

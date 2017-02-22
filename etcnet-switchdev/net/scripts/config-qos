@@ -1,0 +1,114 @@
+#!/bin/bash
+
+usage()
+{
+	echo '/etc/net QoS handler'
+	echo "Usage: $0 <interface> <start|stop>" >&2
+	exit 1
+}
+
+[ -d $MYIFACEDIR/qos/ -a -x $MYIFACEDIR/qos/ ] || exit 0
+[ $# -ge 2 ] || usage
+NAME=$1
+ACTION=$2
+eval "IPV4ADDRESS=($3)"
+eval "IPV6ADDRESS=($4)"
+pickup_defaults
+pickup_options
+! profiled_filename opts "$MYIFACEDIR/qos/options" || . "$opts"
+
+case $ACTION in
+	start)
+		# process_qos_dir <current dir> <parent> [last qdisc handle] [extra]
+		process_qos_dir()
+		{
+			local NODENAME NODETYPE NODEIDPREFIX NODEATTRS NODEID
+			local NODEDIR=${1:?missing 1st arg to $FUNCNAME}
+			local NODENAME=${NODEDIR//*\//}
+			# this arg is 'root' for the first call and 'parent x:y' for the rest
+			local PARENTNODE=${2:?missing 2nd arg to $FUNCNAME}
+			local LAST_QDISC_HANDLE=$3
+			local EXTRAATTRS=$4
+			local CANDCLASS CANDQDISC
+			local RECLEVEL
+
+			if profiled_filename_exist CANDCLASS "$NODEDIR/class"; then
+				NODETYPE=class
+				NODEIDPREFIX=classid
+				NODEID="$LAST_QDISC_HANDLE$NODENAME"
+				NODEATTRS=`head -1 $CANDCLASS`
+			elif profiled_filename_exist CANDQDISC "$NODEDIR/qdisc"; then
+				NODETYPE=qdisc
+				NODEIDPREFIX=handle
+				NODEID="$NODENAME:"
+				LAST_QDISC_HANDLE=$NODEID
+				NODEATTRS=`head -1 $CANDQDISC`
+			else
+				print_error "Unknown node type in $FUNCNAME, RECLEVEL=$RECLEVEL, CWD=$NODEDIR"
+				return 1
+			fi
+			$TC $NODETYPE add dev $NAME $PARENTNODE $NODEIDPREFIX $NODEID $EXTRAATTRS $(eval_string "$NODEATTRS")
+		# setup filters
+			local CANDFILTER CANDEXTRAFILTER CANDEXTRAFILTERARGS=
+
+			if profiled_filename CANDEXTRAFILTER "$NODEDIR/extra.filter"; then
+				CANDEXTRAFILTERARGS=$(eval_string "`head -1 $CANDEXTRAFILTER 2>/dev/null`")
+			fi
+
+			if [ "$NODETYPE" = class ] && profiled_filename CANDFILTER "$NODEDIR/filter"; then
+				$DENOISE $CANDFILTER |
+				while read FILTEREXPR; do
+					FILTEREXPR=$(eval_string "$FILTEREXPR")
+					$TC filter add dev $NAME parent $LAST_QDISC_HANDLE $CANDEXTRAFILTERARGS $FILTEREXPR flowid $NODEID
+				done
+
+			fi
+
+			RECLEVEL=$((RECLEVEL+1))
+
+			local CANDEXTRA CANDEXTRAARGS=
+			if profiled_filename CANDEXTRA "$NODEDIR/extra"; then
+				CANDEXTRAARGS=$(eval_string "`head -1 $CANDEXTRA 2>/dev/null`")
+			fi
+			local cdir
+			for cdir in $NODEDIR/*; do
+				# Take base name of each directory and build up the best match
+				# for current profile and host. If the full name and the best
+				# match are equal, go on.
+				[ -d $cdir ] || continue
+				local base=${cdir%#*}
+				base=${base%@*}
+
+				local bestmatch= profcdir=
+
+				profiled_filename_dir bestmatch "$base" &&
+					[ "$bestmatch" = "$cdir" ] ||
+					continue
+
+				profiled_filename_dir profcdir "$cdir"
+				$FUNCNAME "$profcdir" "parent $NODEID" "$LAST_QDISC_HANDLE" "$CANDEXTRAARGS"
+			done
+			RECLEVEL=$((RECLEVEL-1))
+			return 0
+		}
+		# clean up
+		$TC qdisc del dev $NAME root >/dev/null 2>&1
+
+		# do the rest
+		cd $MYIFACEDIR/qos/
+		export RECLEVEL=0
+		# process only the first dir
+		for d in $MYIFACEDIR/qos/*; do
+			[ -d $d ] && {
+				process_qos_dir $d root && print_progress
+				break
+			}
+		done
+	;;
+	stop)
+		$TC qdisc del dev $NAME root >/dev/null 2>&1
+	;;
+	*)
+		print_error "Illegal argument to $0: '$ACTION'"
+	;;
+esac

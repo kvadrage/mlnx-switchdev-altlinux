@@ -1,0 +1,610 @@
+#!/bin/bash
+
+# Functions and variables are subject for export, see bottom of this file.
+
+# These are necessary constants.
+DENOISE="egrep ^[^#]"
+DEFAULT_BONDMODE=0
+IFACEDIR=/etc/net/ifaces
+LOCALSCRIPTDIR=/etc/net
+VARLIBDIR=/var/lib/etcnet
+VLANTAB=/etc/net/vlantab
+HOSTTAB=/etc/net/hosttab
+IFTAB=/etc/net/iftab
+PROFILE_FILE=/etc/net/profile
+PROC_CMDLINE=/proc/cmdline
+DEFAULT_IFPLUGSTATUS=/usr/sbin/ifplugstatus
+DEFAULT_IFPLUGD=/usr/sbin/ifplugd
+DEFAULT_IWPRIV=/sbin/iwpriv
+DEFAULT_IWCONFIG=/sbin/iwconfig
+DEFAULT_WLANCONFIG=/usr/sbin/wlanconfig
+DEFAULT_WPA_SUPPLICANT=/usr/sbin/wpa_supplicant
+DEFAULT_WPA_CLI=/usr/sbin/wpa_cli
+DEFAULT_PLIPCONFIG=/sbin/plipconfig
+DEFAULT_VCONFIG=/usr/bin/vconfig
+DEFAULT_IPSECADM=/usr/sbin/ipsecadm
+DEFAULT_ETHTOOL=/usr/sbin/ethtool
+DEFAULT_RESOLVCONFTOOL=/sbin/resolvconf
+DEFAULT_PPPD=/usr/sbin/pppd
+DEFAULT_CHAT=/usr/sbin/chat
+DEFAULT_PPPOPTIONSFILE=pppoptions
+DEFAULT_PPPINITCHAT=pppinit
+DEFAULT_PPPCONNECTCHAT=pppconnect
+DEFAULT_PPPDISCONNECTCHAT=pppdisconnect
+DEFAULT_CHATOPTIONS='-t 120'
+DEFAULT_PPPOE=/usr/sbin/pppoe
+DEFAULT_PPPOEOPTIONS='-U'
+DEFAULT_PPTP=/usr/sbin/pptp
+DEFAULT_PENTANETT=/usr/sbin/pentanett
+DEFAULT_PENTAVALT=/usr/sbin/pentavalt
+DEFAULT_PENTANET_CONF=pentanet.conf
+DEFAULT_PENTAVAL_CONF=pentaval.conf
+DEFAULT_SZAP=/usr/bin/szap
+DEFAULT_SZAP_ARGS='-n 1 -x'
+DEFAULT_DVBNET=/usr/bin/dvbnet
+DEFAULT_PAND=/usr/bin/pand
+DEFAULT_OSSH=/usr/bin/ssh
+DEFAULT_OSSHIDENTITY=identity
+DEFAULT_OVPN=/usr/sbin/openvpn
+DEFAULT_OVPNCONFFILE=ovpnoptions
+DEFAULT_OVPNCAFILE=ovpnca
+DEFAULT_OVPNCRTFILE=ovpncrt
+DEFAULT_OVPNKEYFILE=ovpnkey
+DEFAULT_OVPNTLSAUTHFILE=ovpntlsauth
+DEFAULT_OVPNUSER=openvpn
+DEFAULT_OVPNGROUP=openvpn
+OVPNCHROOTDIR=/var/lib/openvpn
+OVPNRUNDIR=/var/run
+DEFAULT_OPENL2TPD=/usr/sbin/openl2tpd
+DEFAULT_L2TPCONFIG=/usr/bin/l2tpconfig
+DEFAULT_L2TPTUNNEL=l2tptunnel
+DEFAULT_L2TPSESSION=l2tpsession
+DEFAULT_L2TPPPP=l2tpppp
+L2TP_PREFIX_TUNNEL="etcnet_tunnel_"
+L2TP_PREFIX_SESSION="etcnet_session_"
+L2TP_PREFIX_PPP_PROFILE="etcnet_ppp_profile_"
+OPENL2TPD_PID="/var/run/openl2tpd.pid"
+
+trim()
+{
+	exec sed -e 's/^ *\(.*\) *$/\1/'
+}
+
+# Stolen from /etc/init.d/functions and improved.
+is_yes()
+{
+	case "$1" in
+		[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|[Yy]|1)
+			# true returns zero
+			return 0
+		;;
+		*)
+			# false returns one
+			return 1
+		;;
+	esac
+}
+
+is_no()
+{
+	case "$1" in
+		[Nn][Oo]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Ff][Ff]|[Nn]|0)
+			# true returns zero
+			return 0
+		;;
+		*)
+			# false returns one
+			return 1
+		;;
+	esac
+}
+
+SourceIfNotEmpty()
+{
+	local f
+	f="$1"
+	shift
+	[ -s "$f" ] && . "$f" "$@"
+}
+
+ExecIfExecutable()
+{
+	local f
+	f="$1"
+	shift
+	[ -x "$f" ] && "$f" "$@"
+}
+
+supported_type()
+{
+	local TYPE=${1:?missing 1st arg to $FUNCNAME}
+	[ -x $SCRIPTDIR/create-$TYPE -o -x $SCRIPTDIR/destroy-$TYPE ] && return 0
+	return 1
+}
+
+# try to translate iface name into corresponding type
+name2type()
+{
+	local NAME=${1:?missing 1st arg to $FUNCNAME}
+	local CAND=${NAME%%[0-9]*}
+	supported_type $CAND && echo $CAND
+}
+
+source_optfile()
+{
+	local prof_of
+	profiled_filename prof_of "$1" &&
+		[ -n "${prof_of##*.rpm*}" -a -n "${prof_of##*\~}" ] ||
+		continue
+	. "$prof_of"
+}
+
+# Read options hierarchy. Should work for unknown interfaces too.
+pickup_options()
+{
+	# to determine iface type we must read it's config, but
+	# we should read global config and type config first.
+	# A workaround here.
+	local of prof_of
+	for of in $MYIFACEDIR/options $MYIFACEDIR/options.d/*; do
+		source_optfile "$of"
+	done
+	is_yes "$DISABLED" && return
+	[ -z "$TYPE" ] && TYPE=`name2type $NAME`
+	[ -z "$TYPE" ] && {
+		print_error "No TYPE is specified for iface '$NAME' and can't guess automatically. Please fix."
+		return 1
+	}
+	if ! supported_type $TYPE; then
+		print_error "iface type '$TYPE' is not supported"
+	fi
+
+	# source default options
+	for of in $IFACEDIR/default/options $IFACEDIR/default/options.d/*; do
+		source_optfile "$of"
+	done
+
+	# then source default options for our iface type
+	for of in $IFACEDIR/default/options-$TYPE $IFACEDIR/default/options-$TYPE.d/*; do
+		source_optfile "$of"
+	done
+
+	# and finally source iface options
+	for of in $MYIFACEDIR/options $MYIFACEDIR/options.d/*; do
+		source_optfile "$of"
+	done
+
+	# Load type-specific functions
+	SourceIfNotEmpty $SCRIPTDIR/functions-$TYPE
+}
+
+print_log()
+{
+	local prefix="$1"; shift
+
+	echo "$prefix: $0: $@" >&2
+	# don't hang if logger hangs
+	logger -p daemon.info -t /etc/net -- "$prefix: $0: $@" &
+}
+
+print_warning()
+{
+	print_log "WARNING" "$@"
+}
+
+print_error()
+{
+	print_log "ERROR" "$@"
+}
+
+print_message()
+{
+	is_yes "$VERBOSE" && echo "$@"
+	return 0
+}
+
+print_progress()
+{
+	is_yes "$VERBOSE" && is_yes "$PROGRESS" && echo -n ${1:-.}
+	return 0
+}
+
+print_nack()
+{
+	is_yes "$VERBOSE" && is_yes "$PROGRESS" && echo -n ${1:-!}
+	return 0
+}
+
+iface_is_up()
+{
+	local NAME=${1:?missing 1st argument to $FUNCNAME}
+	$IP -o link show dev $NAME 2>/dev/null | cut -d' ' -f3 | grep -qs '[<,]UP[,>]'
+}
+
+# Invoke program which understands the "-o NAME" option -
+# insmod for modutils, modprobe for module-init-tools.
+modprobe_with_rename()
+{
+	case "$($MODPROBE --version 2>/dev/null ||:)" in
+		*modprobe*version*)
+			$INSMOD "$@"
+			;;
+		*)
+			$MODPROBE "$@"
+			;;
+	esac
+}
+
+try_rmmod()
+{
+	is_yes "$NEVER_RMMOD" && return
+	local MODNAME=${1:?missing 1st argument to $FUNCNAME}
+	# Note: usage counter is treated in a different way by 2.6 kernels.
+	# This may cause bugs :(
+	$LSMOD | egrep -qs "^$MODNAME +[0-9]+ +0 " && $RMMOD $MODNAME
+}
+
+# Look if iface name will change after ifrename call.
+get_mapped_ifname()
+{
+	local OLDNAME=${1:?missing 1st argument to $FUNCNAME}
+	local NEW_NAME PROF_IFTAB
+	if profiled_filename PROF_IFTAB "$IFTAB"; then
+		[ -x $IFRENAME ] || {
+			print_error "$IFRENAME is unavailable, but $PROF_IFTAB exists"
+			exit 1
+		}
+		# At some point ifrename started to print only the new name of an
+		# interface into stderr instead of its usual "Dry-run : Would rename eth0 to devnet."
+		# printed into stdout.
+		# Let's accept both formats, suppressing the stderr.
+		NEW_NAME=`$IFRENAME -c $PROF_IFTAB -i $OLDNAME -D 2>&1 | head -1 | \
+			grep -v '^Error: ' | sed 's/.*Would rename.* to //;s/\.$//'`
+		[ $? = 0 -a -n "$NEW_NAME" ] && echo $NEW_NAME
+	fi
+}
+
+# This function works for directories as well.
+profiled_filename_is()
+{
+	if [ "$#" -lt 3 ]; then
+		print_error "$FUNCNAME: More arguments required"
+		exit 1
+	fi
+	local __profiled_filename_is_op="$1"
+	local __profiled_filename_is_name="$2"
+	local __profiled_filename_is_base="$3"
+	set -- "${NETPROFILE:+#$NETPROFILE}${NETHOST:+@$NETHOST}" \
+	       "${NETHOST:+@$NETHOST}" \
+	       "${NETPROFILE:+#$NETPROFILE}" \
+	       ""
+        while [ "$#" -gt 0 ]; do
+		if  [ "$__profiled_filename_is_op" "$__profiled_filename_is_base$1" ]; then
+			eval "$__profiled_filename_is_name=\"\$__profiled_filename_is_base\$1\""
+			return 0
+		fi
+		shift
+	done
+	return 1
+}
+
+profiled_filename_exist()
+{
+	profiled_filename_is -e "$1" "$2" ||
+		return 1
+}
+
+profiled_filename_dir()
+{
+	profiled_filename_is -d "$1" "$2" ||
+		return 1
+}
+
+profiled_filename()
+{
+	profiled_filename_is -s "$1" "$2" ||
+		return 1
+}
+
+# This function updates part of current config file namespace, consisting of
+# profile name and host name. Profile name can be overriden, but host
+# name can't be.
+init_netprofile()
+{
+	if [ -n "$1" ]; then
+		NETPROFILE="$1"
+	elif [ -n "$MYIFACEDIR" -a -s "$MYIFACEDIR/selectprofile" -a -x "$MYIFACEDIR/selectprofile" ]; then
+		NETPROFILE=`$MYIFACEDIR/selectprofile $0 | head -1 | cut -d' ' -f1`
+	elif [ -z "$NETPROFILE" ]; then
+		if [ -r "$PROC_CMDLINE" ]; then
+			# try to fetch profile name from kernel options
+			NETPROFILE=`cat "$PROC_CMDLINE" | sed 's/  / /g' | \
+			sed 's/ /\n/g' | egrep '^netprofile=' | cut -d'=' -f2`
+		fi
+		if [ -z "$NETPROFILE" -a -s "$PROFILE_FILE" -a -r "$PROFILE_FILE" ]; then
+			NETPROFILE=`$DENOISE -m 1 "$PROFILE_FILE" | trim | cut -d' ' -f1`
+		fi
+	fi
+	return 0
+}
+
+# Network hostname init. Should be called by network.init during startup.
+init_nethost()
+{
+	if [ -n "$1" ]; then
+		NETHOST="$1"
+	elif [ -s "$HOSTTAB" ] && grep "^$HOSTNAME " $HOSTTAB; then
+		NETHOST=`$DENOISE $HOSTTAB | trim | grep -m 1 "^$HOSTNAME " | cut -d' ' -f2`
+	else
+		NETHOST=$HOSTNAME
+	fi
+	return 0
+}
+
+# This function executes an action for all children found.
+foreach_child()
+{
+	# This function finds all direct children of interface specified and
+	# returns result in CHILDREN global variable.
+	find_all_children()
+	{
+		# This helper must be run in a separate subprocess to not mess up
+		# current option set. We don't do any checks, because it's called
+		# by find_all_children() only.
+		iface_depends()
+		{
+			pickup_options
+			is_yes "$DISABLED" && return 1
+			echo $REQUIRES $HOST | tr ' ' '\n' | grep -q ^$1$
+		}
+		local PARENT=$NAME
+		local MYIFACEDIR NAME BASENAME
+		for MYIFACEDIR in $IFACEDIR/*; do
+			BASENAME=`basename $MYIFACEDIR`
+			NAME=${BASENAME/%@*/}
+			[ "$NAME" = "default" -o "$NAME" = "unknown" -o "$NAME" = "CVS" ] && continue
+			[ "${NAME/%@*/}" = "${BASENAME/%@$NETHOST/}" ] || continue
+			(iface_depends $PARENT) && CHILDREN=${CHILDREN:+$CHILDREN }$NAME
+		done
+	}
+	######### End of preamble ############
+	local CHILDREN ret=0 WHAT=${1:?missing 1st argument to $FUNCNAME}
+	find_all_children
+	for child in $CHILDREN; do
+		$WHAT $child || : $((ret++))
+	done
+	return $ret
+}
+
+# Set all child ifaces down.
+ifdown_children()
+{
+	foreach_child $SCRIPTDIR/ifdown
+}
+
+# Set all child ifaces up.
+ifup_children()
+{
+	foreach_child $SCRIPTDIR/ifup
+}
+
+# Check if all parent ifaces are up and ifup if necessary.
+ifup_parents()
+{
+	[ -z "$REQUIRES" -a -z "$HOST" ] && return 0
+	local parent ret=0
+	for parent in ${REQUIRES:+$REQUIRES }${HOST}; do
+		# We call ifup even if parent exists, but is down.
+		if ! iface_is_up $parent; then
+			$SCRIPTDIR/ifup $parent || {
+				ret=$?
+				break
+			}
+		fi
+	done
+	return $ret
+}
+
+ifdown_parents()
+{
+	[ -z "$REQUIRES" -a -z "$HOST" ] && return 0
+	local parent ret=0
+	for parent in ${REQUIRES:+$REQUIRES }${HOST}; do
+		# Parent iface may exist, but be down, because some children auto-down their parents.
+		# We should call ifdown, if iface exists.
+		if iface_exists $parent; then
+			$SCRIPTDIR/ifdown $parent || {
+				ret=$?
+				break
+			}
+		fi
+	done
+	return $ret
+}
+
+iface_exists()
+{
+	local NAME=${1:?missing 1st argument to $FUNCNAME}
+	$IP li sh dev $NAME >/dev/null 2>&1
+}
+
+seen_iface ()
+{
+	local needle=${1:?missing 1st arg to $FUNCNAME}
+	for cand in $SEEN_IFACES; do
+		[ "$cand" = "$needle" ] && return 0
+	done
+	return 1
+}
+
+add_seen_iface()
+{
+	local newname=${1:?missing 1st arg to $FUNCNAME}
+	SEEN_IFACES="${SEEN_IFACES:+$SEEN_IFACES }$newname"
+}
+
+# Universal configuration processor. Automatically does profiling,
+# comments filtering and progress reporting.
+xargise_file()
+{
+	local BASEFILE="${1:?missing 1st arg to $FUNCNAME}"
+	local PROCESSOR="${2:?missing 2nd arg to $FUNCNAME}"
+	local REALFILE
+	if profiled_filename REALFILE "$BASEFILE"; then
+		$DENOISE $REALFILE | trim | xargs --max-lines=1 $PROCESSOR && print_progress
+	fi
+	return 0
+}
+
+have_ifplugd()
+{
+	if [ -x "${IFPLUGD:=$DEFAULT_IFPLUGD}" ]; then
+		echo yes
+	else
+		echo no
+	fi
+}
+
+pickup_defaults()
+{
+	local of
+	for of in /etc/net/options /etc/net/options.d/*; do
+		[ "${of%.rpm*}" = "$of" -a "${of%\~}" = "$of" ] || continue
+		SourceIfNotEmpty $of
+	done
+	if [ -z "$SCRIPTDIR" ]; then
+		print_error "could not read /etc/net options from usual place"
+		exit 2
+	fi
+}
+
+# This function returns 0, if we should perform link detection
+# before going on. If we cannot or should not check link presence,
+# this function returns 1.
+need_detection()
+{
+	[ "$TYPE" = "eth" ] || return 1
+	# Optional 1st arg is passed by ifup-common to handle USE_IFPLUGD=auto
+	case "${1:-$LINKDETECT}" in
+		[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|[Oo][Nn]|[Yy]|1)
+			return 0
+		;;
+		[Nn][Oo]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Ff][Ff]|[Nn]|0)
+			return 1
+		;;
+		[Aa][Uu][Tt][Oo])
+			# Sometimes we need not ifplugstatus, but ifplugd. Let's hope they are
+			# packed in the same package.
+			[ -x "${IFPLUGSTATUS:-$DEFAULT_IFPLUGSTATUS}" ] || return 2
+			local driver pick
+			if [ -n "$MODULE" ]; then
+				driver=$MODULE
+			else
+				[ -x "${ETHTOOL:-$DEFAULT_ETHTOOL}" ] || return 1
+				driver=`${ETHTOOL:-$DEFAULT_ETHTOOL} -i $NAME | grep ^driver: | cut -d' ' -f2 2>/dev/null`
+			fi
+			for pick in $GOOD_MODULE_LIST; do
+				[ "$pick" = "$driver" ] && return 0
+			done
+		return 1
+		;;
+	esac
+}
+
+# This function stops DHCP client. Note that DHCP works not only
+# for pure Ethernet ifaces, so we don't keep this function in
+# functions-eth any more.
+stop_dhcp6_client()
+{
+	DHCP_CLIENT=/sbin/dhclient stop_dhcp_client 6
+}
+
+stop_dhcp_client()
+{
+	local V=${1}
+	case `basename $DHCP_CLIENT` in
+		dhcpcd)
+			$DHCP_CLIENT -q --release $NAME
+			# dhcpcd will bring down the interface when stopping. To keep etcnet logics
+			# to work (running shutdown scripts for example) we should bring it up again
+			$IP link set dev $NAME up
+			;;
+		dhclient)
+			local PIDFILE=/var/run/dhclient-$NAME.pid
+			$DHCP_CLIENT ${V:+-$V} -x -pf $PIDFILE -lf /var/lib/dhcp/dhclient/state/dhclient${V}-$NAME.leases $NAME
+			;;
+	esac
+}
+
+stop_ipv4ll_client()
+{
+    local PIDFILE=/var/run/autoipd/avahi-autoipd.$NAME.pid
+    if [ -s $PIDFILE ]; then
+	kill `cat $PIDFILE`
+    fi
+}
+
+modprobe_tuntap() {
+	local i
+
+	[ -c /dev/net/tun ] && return 0
+	$MODPROBE tun || return 1
+	for (( i=0; i < 5; i++ )); do
+		[ -c /dev/net/tun ] && break
+		usleep 100000
+	done
+	[ -c /dev/net/tun ]
+}
+
+eval_string()
+{
+    : ${1:?missing 1st arg to $FUNCNAME}
+    eval "printf '%s\n' \"$@\""
+}
+
+kill_by_pidfile()
+{
+	local PIDFILE=${1:?missing 1st arg to $FUNCNAME}
+	local USECONDS=${2:?missing 2nd arg to $FUNCNAME}
+	local TRIES=${3:?missing 3rd arg to $FUNCNAME}
+	local SIGNAL=${4:-TERM}
+	if [ -s "$PIDFILE" ]; then
+		local PID=$(cat "$PIDFILE")
+		kill -$SIGNAL $PID 2>/dev/null
+		while [ $TRIES -gt 0 ] && kill -0 $PID 2>/dev/null; do
+			usleep $USECONDS
+			TRIES=$((TRIES-1))
+		done
+		if [ $TRIES -le 0 ]; then
+			kill -9 $PID 2>/dev/null
+			rm -f -- "$PIDFILE"
+		fi
+	fi
+}
+
+declare -frx is_yes is_no SourceIfNotEmpty ExecIfExecutable source_optfile supported_type name2type
+declare -frx pickup_options print_log print_warning print_error print_message print_progress print_nack
+declare -frx iface_is_up try_rmmod get_mapped_ifname init_netprofile
+declare -frx profiled_filename profiled_filename_dir profiled_filename_exist profiled_filename_is
+declare -frx init_nethost foreach_child ifdown_children ifup_children ifup_parents
+declare -frx ifdown_parents iface_exists seen_iface add_seen_iface xargise_file
+declare -frx have_ifplugd pickup_defaults trim need_detection stop_dhcp_client
+declare -frx stop_ipv4ll_client modprobe_with_rename modprobe_tuntap
+declare -frx eval_string kill_by_pidfile
+declare -rx DENOISE DEFAULT_BONDMODE IFACEDIR LOCALSCRIPTDIR VARLIBDIR
+declare -rx VLANTAB HOSTTAB IFTAB PROFILE_FILE PROC_CMDLINE DEFAULT_IFPLUGSTATUS
+declare -rx DEFAULT_IFPLUGD DEFAULT_IWCONFIG DEFAULT_WLANCONFIG DEFAULT_WPA_SUPPLICANT DEFAULT_WPA_CLI DEFAULT_PLIPCONFIG
+declare -rx DEFAULT_IWPRIV DEFAULT_VCONFIG DEFAULT_PENTANETT DEFAULT_PENTAVALT DEFAULT_PENTANET_CONF
+declare -rx DEFAULT_PENTAVAL_CONF DEFAULT_IPSECADM DEFAULT_BRCTL
+declare -rx DEFAULT_ETHTOOL DEFAULT_RESOLVCONFTOOL DEFAULT_PPPD DEFAULT_CHAT DEFAULT_PPPOPTIONSFILE
+declare -rx DEFAULT_PPPINITCHAT DEFAULT_PPPCONNECTCHAT DEFAULT_PPPDISCONNECTCHAT
+declare -rx DEFAULT_CHATOPTIONS DEFAULT_PPPOE DEFAULT_PPPOEOPTIONS DEFAULT_PPTP
+declare -rx DEFAULT_SZAP DEFAULT_SZAP_ARGS DEFAULT_DVBNET DEFAULT_PAND
+declare -rx DEFAULT_OSSH DEFAULT_OSSHIDENTITY
+declare -rx DEFAULT_OVPN DEFAULT_OVPNCONFFILE DEFAULT_OVPNKEYFILE DEFAULT_OVPNCAFILE
+declare -rx DEFAULT_OVPNCRTFILE DEFAULT_OVPNUSER DEFAULT_OVPNGROUP OVPNCHROOTDIR OVPNRUNDIR
+declare -rx DEFAULT_OVPNTLSAUTHFILE
+declare -rx DEFAULT_L2TPCONFIG DEFAULT_OPENL2TPD
+declare -rx DEFAULT_L2TPTUNNEL DEFAULT_L2TPSESSION DEFAULT_L2TPPPP
+declare -rx L2TP_PREFIX_TUNNEL L2TP_PREFIX_SESSION L2TP_PREFIX_PPP_PROFILE
+declare -rx OPENL2TPD_PID

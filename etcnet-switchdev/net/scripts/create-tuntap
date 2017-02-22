@@ -1,0 +1,15 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+# in case user hasn't supplied tun/tap mode, guess from iface name,
+# fall back to default tap
+if [ "${TUNTAP_OPTIONS##* mode }" = "${TUNTAP_OPTIONS}" ]; then
+	case "$NAME" in
+	tun*|tap*) TUNTAP_OPTIONS="$TUNTAP_OPTIONS mode ${NAME:0:3}" ;;
+	*) TUNTAP_OPTIONS="$TUNTAP_OPTIONS mode $DEFAULT_TUNTAP_MODE" ;;
+	esac
+fi
+
+$IP tuntap add "$NAME" ${TUNTAP_USER:+user $TUNTAP_USER} ${TUNTAP_OPTIONS}

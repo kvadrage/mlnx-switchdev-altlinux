@@ -1,0 +1,12 @@
+#!/bin/bash
+
+profiled_filename ETHTOOL_OPTIONS "$MYIFACEDIR/ethtool" ||
+	exit 0
+
+if ! [ -x "${ETHTOOL:=$DEFAULT_ETHTOOL}" ]; then
+	print_warning "$ETHTOOL_OPTIONS exists, but $ETHTOOL is not available!"
+	# Don't return error to ifup on missing ethtool binary
+	exit 0
+fi
+
+xargise_file "$ETHTOOL_OPTIONS" "$ETHTOOL -s $NAME"

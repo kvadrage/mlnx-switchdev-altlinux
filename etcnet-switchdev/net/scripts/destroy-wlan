@@ -1,0 +1,11 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -x "${WLANCONFIG:=$DEFAULT_WLANCONFIG}" ] || {
+	print_error "$WLANCONFIG does not exist or is not executable. Try installing madwifi-utils RPM."
+	exit 1
+}
+
+$WLANCONFIG $NAME destroy

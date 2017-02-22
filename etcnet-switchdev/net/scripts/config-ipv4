@@ -1,0 +1,61 @@
+#!/bin/bash
+
+usage()
+{
+	echo '/etc/net IPv4 handler'
+	echo "Usage: $0 <interface> <start|stop>" >&2
+	exit 1
+}
+
+[ $# -ge 2 ] || usage
+NAME=$1
+ACTION=$2
+eval "IPV4ADDRESS=($3)"
+eval "IPV6ADDRESS=($4)"
+pickup_defaults
+pickup_options
+
+case $ACTION in
+	start)
+		. $SCRIPTDIR/functions-ipv4
+		is_yes $DONT_FLUSH || {
+			$IP -4 address flush dev $NAME >/dev/null 2>&1
+			print_progress
+		}
+		if iface_is_up $NAME; then
+			case "$BOOTPROTO" in
+				static|dhcp6|dhcp6[-,\ ]static)
+					try_static && config_ipv4_routes_rules add
+					;;
+				dhcp)
+					try_dhcp && config_ipv4_routes_rules add
+					;;
+				ipv4ll)
+					try_ipv4ll && config_ipv4_routes_rules add
+					;;
+				dhcp[-,\ ]static)
+					try_dhcp || try_static && config_ipv4_routes_rules add
+					;;
+				dhcp[-,\ ]ipv4ll)
+					try_dhcp || try_ipv4ll && config_ipv4_routes_rules add
+					;;
+				dhcp[-,\ ]ipv4ll[-,\ ]static)
+					try_dhcp || try_ipv4ll || try_static && config_ipv4_routes_rules add
+					;;
+				*)
+					print_error "unknown BOOTPROTO '$BOOTPROTO'"
+					;;
+			esac
+		fi
+	;;
+	#------------------------------------------------------ 'start' case ends
+	stop)
+		. $SCRIPTDIR/functions-ipv4
+		config_ipv4_routes_rules del
+		is_yes "$DONT_FLUSH" || $IP -4 address flush dev $NAME >/dev/null 2>&1
+	;;
+	#------------------------------------------------------ 'stop' case ends
+	*)
+		print_error "Illegal argument to $0: '$ACTION'"
+	;;
+esac

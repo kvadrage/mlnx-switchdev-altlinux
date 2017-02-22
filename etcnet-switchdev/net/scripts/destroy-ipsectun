@@ -1,0 +1,17 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+: ${TUNLOCAL:?missing TUNLOCAL}
+: ${TUNREMOTE:?missing TUNREMOTE}
+: ${TUNSPI:?missing SPI}
+
+[ -x "${IPSECADM:=$DEFAULT_IPSECADM}" ] || {
+	print_error "$IPSECADM does not exist or is not executable. Try installing ipsecadm RPM."
+	exit 1
+}
+
+$IPSECADM tunnel del $NAME
+$IPSECADM sa del --src=$TUNLOCAL --dst=$TUNREMOTE --spi=$TUNSPI --duplex
+try_rmmod ipsec_tunnel

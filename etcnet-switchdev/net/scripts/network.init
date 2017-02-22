@@ -1,0 +1,664 @@
+#!/bin/bash
+#
+# network
+# chkconfig: 345 10 90
+# description: /etc/net is network configuration software
+
+### BEGIN INIT INFO
+# Provides: $network
+# Required-Start: $local_fs
+# Should-Start: $syslog
+# Required-Stop:  $remote_fs
+# Short-Description: Bring up/down networking
+# Description: Bring up/down networking
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 2 6
+### END INIT INFO
+
+# ALTLinux: Do not load RH compatibility interface.
+WITHOUT_RC_COMPAT=1
+
+SCRIPTDIR=/etc/net/scripts
+if [ ! -s $SCRIPTDIR/functions ]; then
+	echo "Error: $SCRIPTDIR/functions not found!"
+	exit 1
+fi
+export VERBOSE=on
+export PROGRESS=on
+# In certain cases we receive preset variables, some of those are not
+# what we want to accept.
+export HOST=
+. $SCRIPTDIR/functions
+pickup_defaults
+. $SCRIPTDIR/functions-fw
+SourceIfNotEmpty /etc/sysconfig/network
+export IFACEDIR SCRIPTDIR NETPROFILE NETHOST
+LOCKFILE=/var/lock/subsys/network
+
+type2group()
+{
+	local i t TYPE=${1:?missing 1st arg to $FUNCNAME}
+	for (( i=0; i < 5; i++ )); do
+		for t in ${IFGROUP[$i]}; do
+			if [ "$TYPE" = "$t" ]; then
+				echo $i
+				return
+			fi
+		done
+	done
+}
+
+group2name()
+{
+	local G=${1:?missing 1st arg to $FUNCNAME}
+	case "$G" in
+		0)
+			echo 'virtual'
+		;;
+		1)
+			echo 'realphys'
+		;;
+		2)
+			echo 'hostedphys'
+		;;
+		3)
+			echo 'indeplog'
+		;;
+		4)
+			echo 'deplog'
+		;;
+	esac
+}
+
+start_vlantab()
+{
+	local PROFILED_VLANTAB
+
+	if ! profiled_filename PROFILED_VLANTAB "$VLANTAB"; then
+		print_message -n "Processing $VLANTAB: "
+		print_message empty.
+		return
+	else
+		print_message -n "Processing $PROFILED_VLANTAB: "
+	fi
+
+	local LCNT=`$DENOISE -c $PROFILED_VLANTAB`
+	if [ "$LCNT" != "0" ]; then
+		[ -x "${VCONFIG:=$DEFAULT_VCONFIG}" ] || {
+			print_message "missing $VCONFIG"
+			return 1
+		}
+		local HOST_IFACE CHILD_VID CHILD_NAME PROBED_8021Q=no
+		$VCONFIG set_name_type $VLAN_NAMETYPE >/dev/null 2>&1 ||
+		{
+			print_error 'error setting VLAN naming type, aborting'
+			return 1
+		}
+		SourceIfNotEmpty $SCRIPTDIR/functions-vlan
+		$DENOISE $PROFILED_VLANTAB | while read HOST_IFACE CHILD_VID CHILD_NAME; do
+			if [ "$PROBED_8021Q" = "no" ]; then
+				PROBED_8021Q=yes
+				$MODPROBE 8021q || {
+					print_error 'error inserting 8021q kernel module'
+					return 1
+				}
+			fi
+			if iface_is_up "$HOST_IFACE"; then
+				if create_vlan_iface $HOST_IFACE $CHILD_VID $CHILD_NAME; then
+					print_progress
+				else
+					print_nack
+				fi
+			fi
+		done
+	fi
+	print_message "$LCNT lines processed."
+	return 0
+}
+
+stop_vlantab()
+{
+	local PROFILED_VLANTAB
+
+	if ! profiled_filename PROFILED_VLANTAB "$VLANTAB"; then
+		print_message -n "Processing $VLANTAB: "
+		print_message empty.
+		return 0
+	else
+		print_message -n "Processing $PROFILED_VLANTAB: "
+	fi
+
+	local HOST_IFACE CHILD_VID CHILD_NAME
+	SourceIfNotEmpty $SCRIPTDIR/functions-vlan
+	$DENOISE $PROFILED_VLANTAB | while read HOST_IFACE CHILD_VID CHILD_NAME; do
+		if destroy_vlan_iface $HOST_IFACE $CHILD_VID $CHILD_NAME; then
+			print_progress
+		else
+			print_nack
+		fi
+	done
+	# See start_vlantab().
+	print_message "`$DENOISE -c $PROFILED_VLANTAB` lines processed."
+	return 0
+}
+
+start_group()
+{
+	local GROUP_ID=${1:?missing 1st argument to $FUNCNAME}
+	shift
+# wc can sometimes output extra spaces
+	local GROUP_SIZE=`echo "${START_GROUP[$GROUP_ID]}" | wc -w | sed 's/ *//'`
+# GROUP_SIZE is always not zero
+	print_message "Starting group $GROUP_ID/`group2name $GROUP_ID` ($GROUP_SIZE interfaces)"
+	local i
+	for ((i=1; i<=$GROUP_SIZE; i++)) do
+		IFNAME=`echo "${START_GROUP[$GROUP_ID]}" | cut -d' ' -f$i`
+		print_message -n -e "\tStarting $IFNAME: "
+		$SCRIPTDIR/ifup $IFNAME $*
+		local rc=$?
+		case $rc in
+			0) print_message "OK" ;;
+			1) print_message "FAILED" ;;
+			2) print_message "SKIPPED" ;;
+		esac
+	done
+}
+
+# clone
+stop_group()
+{
+	local GROUP_ID=${1:?missing 1st argument to $FUNCNAME}
+	shift
+# wc can sometimes output extra spaces
+	local GROUP_SIZE=`echo "${STOP_GROUP[$GROUP_ID]}" | wc -w | sed 's/ *//'`
+# GROUP_SIZE is always not zero
+	print_message "Stopping group $GROUP_ID/`group2name $GROUP_ID` ($GROUP_SIZE interfaces)"
+	local i
+	for ((i=1; i<=$GROUP_SIZE; i++)) do
+		IFNAME=`echo "${STOP_GROUP[$GROUP_ID]}" | cut -d' ' -f$i`
+		print_message -n -e "\tStopping $IFNAME: "
+		$SCRIPTDIR/ifdown $IFNAME $*
+		local rc=$?
+		case $rc in
+			0) print_message "OK" ;;
+			1) print_message "FAILED" ;;
+			2) print_message "SKIPPED" ;;
+		esac
+	done
+}
+
+start()
+{
+	ExecIfExecutable $LOCALSCRIPTDIR/netup-pre $*
+	local defopts fwopts
+	! profiled_filename defopts "/etc/net/ifaces/default/options" || . "$defopts"
+	is_yes "$CONFIG_IPV6" && $MODPROBE ipv6
+	is_yes "$CONFIG_FW" && \
+	    {
+		! profiled_filename fwopts /etc/net/ifaces/default/fw/options ||
+			. "$fwopts"
+		export CONFIG_FW
+		for CFW_TYPE in $FW_TYPE; do
+		    case "$CFW_TYPE" in
+			iptables|ip6tables)
+				    xtables_preload
+				    ;;
+			ebtables|ipset)
+				    ;;
+			*)
+				    print_error "Unknown firewall type $CFW_TYPE"
+				    ;;
+		    esac
+		done
+		$SCRIPTDIR/config-fw default start
+	    }
+	local sysctl_conf
+	! profiled_filename sysctl_conf /etc/net/sysctl.conf ||
+		$SYSCTL -q -p "$sysctl_conf"
+
+	declare -a START_GROUP
+	# 1. fill in the groups
+	local IFACECOUNT=0
+	print_message -n "Computing interface groups: "
+	export MYIFACEDIR NAME
+	for MYIFACEDIR in $IFACEDIR/*; do
+		BNAME=`basename $MYIFACEDIR`
+		NAME=${BNAME/%@*/}
+		[ "${NAME/%@*/}" = "${BNAME/%@$NETHOST/}" ] || continue
+		[ "$NAME" = "default" -o "$NAME" = "unknown" -o "$NAME" = "CVS" ] && continue
+		unset TYPE DISABLED
+		pickup_options
+		is_yes "$DISABLED" && continue
+		GROUP_ID=`type2group $TYPE`
+		[ -z "$GROUP_ID" ] && {
+			print_error "unknown interface group for iface '$NAME' of type '$TYPE'"
+			continue
+		}
+		START_GROUP[$GROUP_ID]="${START_GROUP[$GROUP_ID]:+${START_GROUP[$GROUP_ID]} }$NAME"
+		: $((IFACECOUNT++))
+		print_progress
+	done
+	print_message " $IFACECOUNT interfaces found"
+	# Unset options, which are not set by default, but can break other ifaces.
+	unset REQUIRES HOST
+	# 2. process each group
+	for i in 0 1 2 3 4; do
+		# handle vlantab in hosted physical group
+		[ $i -eq 2 ] && start_vlantab
+		[ -n "${START_GROUP[$i]}" ] && start_group $i boot skiphot
+	done
+	ExecIfExecutable $LOCALSCRIPTDIR/netup-post $*
+	touch "$LOCKFILE"
+}
+
+# almost clone
+stop()
+{
+	ExecIfExecutable $LOCALSCRIPTDIR/netdown-pre $*
+	local defopts fwopts
+	! profiled_filename defopts /etc/net/ifaces/default/options || . "$defopts"
+	is_yes "$CONFIG_FW" && \
+	    {
+		! profiled_filename fwopts /etc/net/ifaces/default/fw/options ||
+			. "$fwopts"
+		export CONFIG_FW
+		for CFW_TYPE in $FW_TYPE; do
+		    case "$CFW_TYPE" in
+			iptables|ip6tables)
+				    xtables_preload
+				    ;;
+			ebtables|ipset)
+				    ;;
+			*)
+				    print_error "Unknown firewall type $CFW_TYPE"
+				    ;;
+		    esac
+		done
+	    }
+	declare -a STOP_GROUP
+	local IFACECOUNT=0
+	print_message -n "Computing interface groups: "
+	export MYIFACEDIR NAME
+	for MYIFACEDIR in $IFACEDIR/*; do
+		BNAME=`basename $MYIFACEDIR`
+		NAME=${BNAME/%@*/}
+		[ "${NAME/%@*/}" = "${BNAME/%@$NETHOST/}" ] || continue
+		[ "$NAME" = "default" -o "$NAME" = "unknown" -o "$NAME" = "CVS" ] && continue
+		unset TYPE DISABLED
+		pickup_options
+		is_yes "$DISABLED" && continue
+		GROUP_ID=`type2group $TYPE`
+		[ -z "$GROUP_ID" ] && {
+			print_error "unknown interface group for iface '$NAME' of type '$TYPE'"
+			continue
+		}
+		STOP_GROUP[$GROUP_ID]="${STOP_GROUP[$GROUP_ID]:+${STOP_GROUP[$GROUP_ID]} }$NAME"
+		: $((IFACECOUNT++))
+		print_progress
+	done
+	print_message " $IFACECOUNT interfaces found"
+	unset REQUIRES HOST
+	# reverse order
+	for i in 4 3 2 1 0; do
+		[ -n "${STOP_GROUP[$i]}" ] && stop_group $i skiphot
+		[ $i -eq 2 ] && stop_vlantab
+	done
+	is_yes "$CONFIG_FW" && $SCRIPTDIR/config-fw default stop
+	ExecIfExecutable $LOCALSCRIPTDIR/netdown-post $*
+	rm -f "$LOCKFILE"
+}
+
+reload()
+{
+	declare -a STOP_GROUP START_GROUP
+	local IFACECOUNT=0
+	export MYIFACEDIR NAME
+
+	local sysctl_conf
+	! profiled_filename sysctl_conf /etc/net/sysctl.conf ||
+		$SYSCTL -q -p "$sysctl_conf"
+
+	print_message -n "Computing interface groups: "
+	for MYIFACEDIR in $IFACEDIR/*; do
+		BNAME=`basename $MYIFACEDIR`
+		NAME=${BNAME/%@*/}
+		[ "${NAME/%@*/}" = "${BNAME/%@$NETHOST/}" ] || continue
+		[ "$NAME" = "default" -o "$NAME" = "unknown" -o "$NAME" = "CVS" ] && continue
+		unset TYPE DISABLED
+		pickup_options
+		is_yes "$DISABLED" && continue
+		GROUP_ID=`type2group $TYPE`
+		[ -z "$GROUP_ID" ] && {
+			print_error "unknown interface group for iface '$NAME' of type '$TYPE'"
+			continue
+		}
+		# don't stop those which are already down
+		iface_is_up $NAME && STOP_GROUP[$GROUP_ID]="${STOP_GROUP[$GROUP_ID]:+${STOP_GROUP[$GROUP_ID]} }$NAME"
+		START_GROUP[$GROUP_ID]="${START_GROUP[$GROUP_ID]:+${START_GROUP[$GROUP_ID]} }$NAME"
+		: $((IFACECOUNT++))
+		print_progress
+	done
+	print_message " $IFACECOUNT interfaces to process"
+	# reverse order for stop, direct order for start
+	ExecIfExecutable $LOCALSCRIPTDIR/netdown-pre $*
+	for i in 4 3 2 1 0; do
+		[ -n "$STOP_GROUP[$i]" ] && stop_group $i
+		[ $i -eq 2 ] && stop_vlantab
+	done
+	ExecIfExecutable $LOCALSCRIPTDIR/netdown-post $*
+	rm -f "$LOCKFILE"
+	ExecIfExecutable $LOCALSCRIPTDIR/netup-pre $*
+	for i in 0 1 2 3 4; do
+		[ $i -eq 2 ] && start_vlantab
+		[ -n "$START_GROUP[$i]" ] && start_group $i boot
+	done
+	ExecIfExecutable $LOCALSCRIPTDIR/netup-post $*
+	touch "$LOCKFILE"
+}
+
+check()
+{
+	print_message "Checking interfaces in $IFACEDIR:"
+	export MYIFACEDIR NAME
+	check_bin_x()
+	{
+		local binary=${1:?ERROR: missing 1st argument to $FUNCNAME}
+		[ ! -x "$binary" ] && print_message " WARNING: $binary is not executable"
+	}
+	for MYIFACEDIR in $IFACEDIR/*; do
+		BNAME=`basename $MYIFACEDIR`
+		NAME=${BNAME/%@*/}
+		if [ "${NAME/%@*/}" != "${BNAME/%@$NETHOST/}" ]; then
+			print_message "$BNAME: SKIPPED"
+			continue
+		fi
+		# skip default
+		[ "$NAME" = "default" -o "$NAME" = "unknown" -o "$NAME" = "CVS" ] && continue
+		unset TYPE DISABLED
+		pickup_options
+		is_yes "$DISABLED" && {
+			print_message "$NAME: DISABLED"
+			continue
+		}
+		GROUP_ID=`type2group $TYPE`
+		[ -z "$GROUP_ID" ] && {
+			print_error "unknown interface group for iface '$NAME' of type '$TYPE'"
+			continue
+		}
+		GROUP=`group2name $GROUP_ID`
+		print_message -n "$BNAME: ${TYPE:-unknown type}/${GROUP:-unknown group}"
+		if [ -z "$GROUP" ];then
+			print_message ' ERROR: unsupported interface!'
+			continue
+		fi
+		# check for required utils
+		case "$TYPE" in
+			dvb)
+				case "$DVBTYPE" in
+					ss223|ss226)
+						check_bin_x "${SZAP:-$DEFAULT_SZAP}"
+						check_bin_x "${DVBNET:-$DEFAULT_DVBNET}"
+					;;
+					pentanet)
+						check_bin_x "${PENTANETT:-$DEFAULT_PENTANETT}"
+					;;
+					*)
+						print_message "ERROR: unknown DVB type '$DVBTYPE'"
+					;;
+				esac
+			;;
+			vlan)
+				check_bin_x "${VCONFIG:-$DEFAULT_VCONFIG}"
+			;;
+			ovpn)
+				check_bin_x "${OVPN:-$DEFAULT_OVPN}"
+			;;
+			bri)
+				check_bin_x "${BRCTL:-$DEFAULT_BRCTL}"
+			;;
+			ipsectun)
+				check_bin_x "${IPSECADM:-$DEFAULT_IPSECADM}"
+			;;
+			ppp)
+				check_bin_x "${PPPD:-$DEFAULT_PPPD}"
+				case "$PPPTYPE" in
+					dialup)
+						check_bin_x "${CHAT:-$DEFAULT_CHAT}"
+					;;
+					pptp)
+						check_bin_x "${PPTP:-$DEFAULT_PPTP}"
+					;;
+					pppoe)
+						check_bin_x "${PPPOE:-$DEFAULT_PPPOE}"
+					;;
+					*)
+						print_message "ERROR: unknown PPP type '$PPPTYPE'"
+					;;
+				esac
+			;;
+			l2tp)
+				check_bin_x "${PPPD:-$DEFAULT_PPPD}"
+				check_bin_x "${OPENL2TPD:-$DEFAULT_OPENL2TPD}"
+				check_bin_x "${L2TPCONFIG:-$DEFAULT_L2TPCONFIG}"
+			;;
+		esac
+		print_message ' DONE'
+		# examine all files
+		for IFACEFILE in $MYIFACEDIR/*; do
+			TESTFILE=`basename $IFACEFILE`
+			[ "$TESTFILE" = "CVS" ] && continue
+			print_message -n -e "\t$NAME/$TESTFILE:"
+			# strip optional profile suffix
+			case ${TESTFILE//.*/} in
+				# standalone optional files
+				options)
+					if egrep -vq '^$|^#|(^[[:alpha:]][[:alnum:]_]*[[:space:]]*=[[:space:]]*.*$)' $IFACEFILE; then
+						print_message -n ' WARNING: unrecognised line(s)'
+							else
+						print_message -n ' IS OK'
+					fi
+					;;
+				sysctl.conf)
+					if egrep -vq '^$|^#|(^[[:alpha:]][[:alnum:]_\.]*[[:space:]]*=[[:space:]]*.*$)' $IFACEFILE; then
+						print_message -n ' WARNING: unrecognised line(s)'
+							else
+						print_message -n ' IS OK'
+					fi
+					;;
+				iplink|ipv4address|ipv6address)
+					print_message -n ' seems OK'
+					;;
+				ipv4route)
+					if [ -s $MYIFACEDIR/ipv4address ]; then
+						print_message -n ' seems OK'
+					else
+						print_message -n ' WARNING: missing ipv4address?'
+					fi
+					;;
+				ipv4rule)
+					if [ -s $MYIFACEDIR/ipv4route ]; then
+						print_message -n ' seems OK'
+					else
+						print_message -n ' WARNING: missing ipv4route?'
+					fi
+					;;
+				ipv6route)
+					if [ -s $MYIFACEDIR/ipv6address ]; then
+						print_message -n ' seems OK'
+					else
+						print_message -n ' WARNING: missing ipv6address?'
+					fi
+					;;
+				# TODO: look up all referenced files
+				pppoptions|pppinit|pppconnect|pppdisconnect)
+					if [ "$TYPE" = "ppp" ]; then
+						print_message -n ' seems OK'
+					else
+						print_message -n ' WARNING: useless file!'
+					fi
+					;;
+				iwconfig)
+					if [ "$TYPE" = "eth" ]; then
+						print_message -n ' seems OK'
+					else
+						print_message -n ' WARNING: useless file!'
+					fi
+					;;
+				channels.conf)
+					if [ "$TYPE" = "dvb" ] && [ "$DVBTYPE" = "ss223" -o "$DVBTYPE" = "ss226" ]; then
+						print_message -n ' seems OK'
+					else
+						print_message -n ' WARNING: possibly useless file!'
+					fi
+					;;
+				pentanet.conf)
+					if [ "$TYPE" = "dvb" ] && [ "$DVBTYPE" = "pentanet" ]; then
+						print_message -n ' seems OK'
+					else
+						print_message -n ' WARNING: possibly useless file!'
+					fi
+					;;
+				ifup-pre|ifup-post|ifdown-pre|ifdown-post)
+					if [ -x "$IFACEFILE" ]; then
+						print_message -n ' seems OK'
+					else
+						print_message "WARNING: script '$TESTFILE' is not executable"
+					fi
+					;;
+				*)
+					print_message -n ' ???'
+					;;
+			esac
+			print_message ''
+		done
+	done
+	# TODO: improve iface name regexp
+	# check iftab(s)
+	for iftab in /etc/net/iftab /etc/net/iftab.*; do
+		[ -f $iftab ] || continue
+		print_message -n "$iftab:"
+		if egrep -qv '^$|^#|(^[[:alpha:]][[:alnum:]]*[[:space:]]+mac|arp|driver|businfo|firmware|baseaddress|irq|iwproto|pcmciaslot[[:space:]]+.+$)' $iftab; then
+			print_message ' WARNING: unrecognised line(s)'
+		else
+			print_message ' IS OK'
+		fi
+	done
+	# check iftab(s)
+	for vlantab in /etc/net/vlantab /etc/net/vlantab.*; do
+		[ -f $vlantab ] || continue
+		print_message -n "$vlantab:"
+		if egrep -qv '^$|^#|(^[[:alpha:]][[:alnum:]]*[[:space:]]+[[:digit:]]+([[:space:]]+[[:alpha:]][[:alnum:]]*([[:space:]].*)?)?$)' $vlantab; then
+			print_message ' WARNING: unrecognised line(s)'
+		else
+			print_message ' IS OK'
+		fi
+	done
+	# check options file(s)
+	for options in /etc/net/options /etc/net/options#* /etc/net/options.d/*; do
+		[ -f $options ] || continue
+		print_message -n "$options:"
+		if egrep -qv '^$|^#|(^[[:alpha:]][[:alnum:]_]*[[:space:]]*=[[:space:]]*.*$)' $options; then
+			print_message ' WARNING: unrecognised line(s)'
+		else
+			print_message ' IS OK'
+		fi
+	done
+	# check profile file
+	for profile in /etc/net/profile; do
+		[ -f $profile ] || continue
+		print_message -n "$profile:"
+		if egrep -qv '^$|^#|(^[[:alnum:]_]+$)' $profile; then
+			print_message ' WARNING: unrecognised line(s)'
+		else
+			print_message ' IS OK'
+		fi
+	done
+}
+
+usage()
+{
+	echo "${0##*/} {start|startwith|stop|stopwith|restart|reload|restartwith|switchto|switchfrom <new profile name>}"
+	exit 1
+}
+
+is_yes "$NETWORKING" || exit 0
+[ -z "$HAVE_IFPLUGD" ] && HAVE_IFPLUGD=`have_ifplugd`
+export HAVE_IFPLUGD
+
+# See how we were called.
+case "$1" in
+	start)
+		[ $# -ne 1 ] && usage
+		init_nethost
+		init_netprofile
+		start $*
+		;;
+	startwith)
+		[ $# -ne 2 ] && usage
+		init_nethost
+		init_netprofile $2
+		start $*
+		;;
+	stop)
+		[ $# -ne 1 ] && usage
+		init_nethost
+		init_netprofile
+		stop $*
+		;;
+	stopwith)
+		[ $# -ne 2 ] && usage
+		init_nethost
+		init_netprofile $2
+		stop $*
+		;;
+	restart)
+		[ $# -ne 1 ] && usage
+		init_nethost
+		init_netprofile
+		stop $*
+		start $*
+		;;
+	reload)
+		[ $# -ne 1 ] && usage
+		init_nethost
+		init_netprofile
+		reload $*
+		;;
+	restartwith)
+		[ $# -ne 2 ] && usage
+		init_nethost
+		init_netprofile $2
+		stop $*
+		init_netprofile $2
+		start $*
+		;;
+	switchto)
+		[ $# -ne 2 ] && usage
+		init_nethost
+		init_netprofile
+		stop $*
+		init_netprofile $2
+		start $*
+		;;
+	switchfrom)
+		[ $# -ne 2 ] && usage
+		init_nethost
+		init_netprofile $2
+		stop $*
+		init_netprofile
+		start $*
+		;;
+	check)
+		init_nethost
+		init_netprofile
+		check
+		;;
+	status)
+		print_message "Currently active devices:"
+		print_message `$IP -o link show | awk -F ": " '/[<,]UP[,>]/ { print $2 }'`
+		;;
+	*)
+		usage
+esac
+
+exit 0

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+pickup_defaults
+pickup_options
+
+[ -d $OVPNRUNDIR ] || 
+{
+	print_error "OpenVPN rundir $OVPNRUNDIR does not exist"
+	exit 1
+}
+
+# 2 seconds grace time
+kill_by_pidfile $OVPNRUNDIR/openvpn-iface-$NAME.pid 500000 4
+
+try_rmmod tun
+
+is_yes "$RESTORE_DEFAULTROUTE" && [ -s $OVPNRUNDIR/openvpn-iface-$NAME.defaultroute ] && {
+	xargise_file $OVPNRUNDIR/openvpn-iface-$NAME.defaultroute "$IP ro ad"
+	rm -f $OVPNRUNDIR/openvpn-iface-$NAME.defaultroute
+}
+
+exit 0

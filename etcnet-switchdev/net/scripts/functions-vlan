@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# get VLAN iface name by host iface and VLAN ID
+# Used by {create,destroy}_vlan_iface()
+get_vlan_ifname()
+{
+	local HOSTIFACE=${1:?missing 1st arg to $FUNCNAME}
+	local VID=${2:?missing 2nd arg to $FUNCNAME}
+	grep "|\ *$VID\ *|\ *$HOSTIFACE" /proc/net/vlan/config | cut -d' ' -f1
+}
+
+# create VLAN iface <parent iface> <VLAN ID> [name]
+# Used by create-vlan and start_vlantab()
+create_vlan_iface()
+{
+	local HOST_IFACE=${1:?missing 1st arg to $FUNCNAME}
+	local VID=${2:?missing 2nd arg to $FUNCNAME}
+	local NAME=$3
+	local ADDRESS=$4
+	[ -x "${VCONFIG:=$DEFAULT_VCONFIG}" ] || {
+		print_error "$VCONFIG does not exist or is not executable. Try installing vlan-utils24 RPM."
+		return 1
+	}
+	$VCONFIG add $HOST_IFACE $VID >/dev/null 2>&1 || return 1
+	local REALNAME=`get_vlan_ifname $HOST_IFACE $VID`
+	if [ -z "$NAME" -o "$NAME" = "AUTO" ]; then
+		NAME=$REALNAME
+	else
+		$IP link set $REALNAME name $NAME
+	fi
+	[ -n "$VLAN_REORDER_HDR" ] && $VCONFIG set_flag $NAME 1 $VLAN_REORDER_HDR >/dev/null
+	[ -n "$ADDRESS" ] && $IP address add $ADDRESS dev $NAME
+	return 0
+}
+
+# Used by destroy-vlan and stop_vlantab()
+destroy_vlan_iface()
+{
+	[ -x "${VCONFIG:=$DEFAULT_VCONFIG}" ] || {
+		print_error "$VCONFIG does not exist or is not executable. Try installing vlan-utils24 RPM."
+		return 1
+	}
+	local HOST_IFACE=${1:?missing 1st arg to $FUNCNAME}
+	local VID=${2:?missing 2nd arg to $FUNCNAME}
+	local NAME=`get_vlan_ifname $HOST_IFACE $VID`
+	# We must do it regardless of DONT_FLUSH
+	$IP address flush dev $NAME >/dev/null 2>&1
+	$VCONFIG rem $NAME >/dev/null 2>&1 || return 1
+	return 0
+}

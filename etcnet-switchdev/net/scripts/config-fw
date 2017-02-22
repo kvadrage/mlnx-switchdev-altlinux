@@ -1,0 +1,137 @@
+#!/bin/bash
+
+# This script handles firewall configuration for given iface name.
+
+usage()
+{
+	echo '/etc/net FireWall handler'
+	echo "Usage: $0 <interface> <action>" >&2
+	exit 1
+}
+
+
+[ -z "$1" -o -z "$2" ] && usage
+
+NAME=$1
+ACTION=$2
+eval "IPV4ADDRESS=($3)"
+eval "IPV6ADDRESS=($4)"
+
+pickup_defaults
+
+. ${SCRIPTDIR:=/etc/net/scripts}/functions-fw
+
+[ -z "$NETPROFILE" ] && init_netprofile
+
+if [ -d $IFACEDIR/$NAME@$NETHOST ]; then
+    MYIFACEDIR=$IFACEDIR/$NAME@$NETHOST
+else
+    MYIFACEDIR=$IFACEDIR/$NAME
+fi
+
+[ -d "$MYIFACEDIR" ] ||
+{
+    print_error "interface configuration directory $MYIFACEDIR not found"
+    exit 1
+}
+
+! profiled_filename opts /etc/net/ifaces/default/options || . "$opts"
+
+is_yes "$CONFIG_FW" ||
+{
+    print_message "Firewall is disabled"
+    exit 1
+}
+
+! profiled_filename fwdefopts /etc/net/ifaces/default/fw/options || . "$fwdefopts"
+
+[ "$NAME" = "default" -o "$NAME" = "unknown" ] || pickup_options
+
+! profiled_filename fwopts "$MYIFACEDIR/fw/options" || . "$fwopts"
+
+case "$ACTION" in
+    start)
+    FWS="$FW_TYPE"
+    ;;
+    stop)
+    FWS="$(echo -n "$FW_TYPE "|tac -s ' ')"
+    ;;
+    *)
+    print_message "${0##*/} {start|stop}"
+    exit 1
+    ;;
+esac
+
+for CFW_TYPE in $FWS; do
+    case "$CFW_TYPE" in
+        "ipset")
+		    is_yes "$CONFIG_IPV4" || continue
+		    [ -x "$IPSET" ] || 
+			{
+			    print_error "$IPSET not found. Please, install ipset package"
+			    continue
+			}
+		    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    continue
+		    ipset_${ACTION} "$NAME"
+		    ;;
+        "iptables")
+		    # FIXME Does iptables support only IPv4?
+		    is_yes "$CONFIG_IPV4" || continue
+		    [ -x "$IPTABLES" ] || 
+			{
+			    print_error "$IPTABLES not found. Please, install iptables package"
+			    continue
+			}
+		    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    continue
+		    # Load own interface syntax if exists
+		    [ "$NAME" != "default" ] && is_yes "$IPTABLES_HUMAN_SYNTAX" && 
+			{
+			    [ -s "$cfwdir/syntax" ] &&
+				{
+				    IPTABLES_SYNTAX_DIR="$cfwdir"
+				    unset IPTABLES_SYNTAX IPTABLES_SED_RULES
+				}
+			}
+		    xtables_preload
+		    xtables_${ACTION} "$NAME"
+		    ;;
+        "ip6tables")
+		    # FIXME Does ip6tables support only IPv6?
+		    is_yes "$CONFIG_IPV6" || continue
+		    [ -x "$IP6TABLES" ] || 
+			{
+			    print_error "$IP6TABLES not found. Please, install iptables-ipv6 package"
+			    continue
+			}
+		    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    continue
+		    # Load own interface syntax if exists
+		    [ "$NAME" != "default" ] && is_yes "$IP6TABLES_HUMAN_SYNTAX" && 
+			{
+			    [ -s "$cfwdir/syntax" ] &&
+				{
+				    IP6TABLES_SYNTAX_DIR="$cfwdir"
+				    unset IP6TABLES_SYNTAX IP6TABLES_SED_RULES
+				}
+			}
+		    xtables_preload
+		    xtables_${ACTION} "$NAME"
+		    ;;
+	"ebtables")
+		    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$CFW_TYPE" ||
+			    continue
+		    [ -x "$EBTABLES" ] || 
+			{
+			    print_error "$EBTABLES not found. Please, install ebtables package"
+			    continue
+			}
+		    xtables_preload
+		    xtables_${ACTION} "$NAME"
+		    ;;
+		
+	*)
+		    print_error "Firewall type $CFW_TYPE isn't supported"
+    esac
+done

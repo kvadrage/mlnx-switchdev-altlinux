@@ -1,0 +1,40 @@
+#!/bin/bash
+
+pickup_defaults
+init_netprofile
+pickup_options
+
+add_vlans() {
+	local DEV=$1
+	local VLANS=$2
+	local PVID=$3
+	local OPTIONS=$4
+	for vlan in $VLANS; do
+		$BRIDGE vlan add vid $vlan dev $DEV $OPTIONS && print_progress
+	done
+	$BRIDGE vlan add vid $PVID dev $DEV $OPTIONS pvid untagged && print_progress
+}
+
+: ${HOST:?HOST must be set for $NAME}
+
+if profiled_filename PROF_BRCTL "$MYIFACEDIR/brctl"; then
+	print_error "ignoring brctl-style options in $PROF_BRCTL"
+fi
+
+$IP link add $NAME type bridge
+$IP link set $NAME type bridge $BRIDGE_OPTIONS
+
+# add VLANs to the bridge itself
+if [ -z "$PVID" ]; then
+	PVID=1
+fi
+add_vlans $NAME "$VLANS" $PVID self
+
+# add host interfaces to the bridge and trigger ifup for each interface
+for host in $HOST; do
+        $IP link set $host master $NAME && print_progress
+	# add the same VLANs to host interfaces
+	add_vlans $host "$VLANS" $PVID
+	# reload host interfaces
+        $SCRIPTDIR/ifup $host force
+done

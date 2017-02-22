@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# This script handles wireless extensions.
+
+usage()
+{
+	echo "Usage: $0 <interface>" >&2
+	exit 1
+}
+
+[ -z "$1" ] && usage
+NAME=$1
+
+pickup_defaults
+pickup_options
+
+# Do not try to use iw* on wired interface
+if ! is_yes "$CONFIG_DOT1X"; then
+
+# configure private extensions
+if [ -x "${IWPRIV:=$DEFAULT_IWPRIV}" ]; then
+	if profiled_filename_exist "" "$IFACEDIR/default/iwpriv"; then
+		print_warning "$IFACEDIR/default/iwpriv is not supported anymore"
+	fi
+	xargise_file $MYIFACEDIR/iwpriv "$IWPRIV $NAME"
+fi
+
+# configure WEP
+if [ -x "${IWCONFIG:=$DEFAULT_IWCONFIG}" ]; then
+	if profiled_filename_exist "" "$IFACEDIR/default/iwconfig"; then
+		print_warning "$IFACEDIR/default/iwconfig is not supported anymore"
+	fi
+	xargise_file $MYIFACEDIR/iwconfig "$IWCONFIG $NAME"
+fi
+
+fi
+
+# Configure WPA, return special return codes (explained in ifup-common).
+if profiled_filename prof_conf "$MYIFACEDIR/wpa_supplicant.conf"; then
+	[ -x "${WPA_SUPPLICANT:=$DEFAULT_WPA_SUPPLICANT}" ] || {
+		print_error "$WPA_SUPPLICANT does not exist or is not executable. Try installing wpa_supplicant RPM."
+		exit 1
+	}
+	[ -x "${WPA_CLI:=$DEFAULT_WPA_CLI}" ] || {
+		print_error "$WPA_CLI does not exist or is not executable. Try installing wpa_supplicant RPM."
+		exit 1
+	}
+	$WPA_SUPPLICANT -i$NAME${WPA_DRIVER:+ -D$WPA_DRIVER} \
+		-B -P/var/run/wpa_supplicant-$NAME.pid -c $prof_conf && \
+		$WPA_CLI -i$NAME -B -P/var/run/wpa_cli-$NAME.pid -a $SCRIPTDIR/wpa_cli.action && \
+		exit 10
+	exit 11
+fi

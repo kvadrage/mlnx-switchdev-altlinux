@@ -1,0 +1,480 @@
+#!/bin/bash
+
+xtables_expand_variable()
+{
+    local v=${1:?${FUNCNAME}: at least one argument is required}; shift
+    while [ $# -gt 0 ]; do
+	v="${v}_${1}"; shift
+    done
+    printf '%s' "${!v}"
+}
+
+xtables_chain_policy()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    eval "${!XTABLES} -t $TABLE -P $@" || print_error "${!XTABLES} -t $TABLE -P $@"
+}
+
+xtables_create_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    eval "${!XTABLES} -t $TABLE -N $@" || print_error "${!XTABLES} -t $TABLE -N $@"
+}
+
+xtables_delete_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    eval "${!XTABLES} -t $TABLE -X $@" || print_error "${!XTABLES} -t $TABLE -X $@"
+}
+
+xtables_flush_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    eval "${!XTABLES} -t $TABLE -F $@" || print_error "${!XTABLES} -t $TABLE -F $@"
+}
+
+xtables_zero_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    eval "${!XTABLES} -t $TABLE -Z $@" || print_error "${!XTABLES} -t $TABLE -Z $@"
+}
+
+xtables_rename_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    eval "${!XTABLES} -t $TABLE -E $@" || print_error "${!XTABLES} -t $TABLE -E $@"
+}
+
+xtables_list_chain()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    eval "${!XTABLES} -t $TABLE -L $@" || print_error "${!XTABLES} -t $TABLE -L $@"
+}
+
+xtables_loadmodules()
+{
+    local MODULE
+    local ARGS
+    if [ -f "modules" ] && [ -s "modules" ]; then
+	while read MODULE ARGS; do
+	    print_message -e "\tLoading module $MODULE"
+	    $MODPROBE "$MODULE" $ARGS || print_error "Can't load module $MODULE"
+	done < <(egrep "^[^#]" modules)
+    fi
+}
+
+xtables_unloadmodules()
+{
+    if [ -f "modules" ] && [ -s "modules" ]; then
+	while read MODULE ARGS; do
+	    print_message -e "\tUnloading module $MODULE"
+	    $MODPROBE -r "$MODULE" || print_error "Can't unload module $MODULE"
+	done < <(tac modules|egrep "^[^#]")
+    fi
+}
+
+xtables_loadorder()
+{
+    local DIR=${1:?missing 1st arg to $FUNCNAME}
+    shift
+
+    if [ -f "$DIR/loadorder" -a -s "$DIR/loadorder" ]; then
+	sed -n "/^[^#$]/ s,^,$DIR/&,p" "$DIR/loadorder"
+    else
+	find "$DIR" -mindepth 1 -maxdepth 1 -not '(' -name '*~' -o -name '*.rpm*' ')'
+    fi
+}
+
+xtables_walk()
+{
+    while read; do xtables_loadorder $REPLY; done < <(xtables_loadorder "$@")
+}
+
+xtables_push_rule()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    local XTABLES_RULE_EMBEDDING=$(xtables_expand_variable $XTABLES RULE EMBEDDING)
+    : ${@:?missing args to $FUNCNAME}
+    case $1 in
+	"-A"|"-I"|"-D"|"-P")
+			eval "${!XTABLES} -t $TABLE $@" || print_error "${!XTABLES} -t $TABLE $@"
+			;;
+	*)
+    			case ${XTABLES_RULE_EMBEDDING:-APPEND} in
+    			    APPEND)
+	   			    eval "${!XTABLES} -t $TABLE -A $@" || print_error "${!XTABLES} -t $TABLE -A $@"
+				    ;;
+			    INSERT)
+	    	    		    eval "${!XTABLES} -t $TABLE -I $@" || print_error "${!XTABLES} -t $TABLE -I $@"
+				    ;;
+			    *)
+				    print_error "Unknown type of rule embedding $XTABLES_RULE_EMBEDDING"
+				    ;;
+			esac
+			;;
+    esac
+}
+
+xtables_pop_rule()
+{
+    local TABLE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    : ${@:?missing args to $FUNCNAME}
+    case $1 in
+	"-A")
+		shift
+		eval "${!XTABLES} -t $TABLE -D $@" || print_error "${!XTABLES} -t $TABLE -D $@"
+		;;
+	"-I")
+		PRE="$2"
+		case $3 in
+		    [0-9]*)
+			    shift 3
+			    ;;
+		    *)
+			    shift 2
+			    ;;
+		esac
+		eval "${!XTABLES} -t $TABLE -D $PRE $@" || print_error "${!XTABLES} -t $TABLE -D $PRE $@"
+		;;
+	"-D")
+		shift
+		xtables_push_rule -t $TABLE $@
+		;;
+	"-P")
+		continue
+		;;
+	*)
+    		eval "${!XTABLES} -t $TABLE -D $@" || print_error "${!XTABLES} -t $TABLE -D $@"
+		;;
+    esac
+}
+
+xtables_load_syntax()
+{
+    : ${1:?missing 1st arg to $FUNCNAME}
+    [ ! -f "$1" ] || [ ! -s "$1" ] &&
+	{
+	    export ${XTABLES}_SYNTAX=
+	    return 1
+	}
+    export ${XTABLES}_SYNTAX="$(< "$1")"
+}
+
+xtables_create_sed_rules()
+{
+    local REPLACES=${1:?missing 1st arg to $FUNCNAME}
+    local SEARCH
+    local REPLACE
+    local OLDIFS
+    local COUNTER=0
+    local SED_RULES=
+    
+    print_message -n -e "\nLoading iptables data"
+    OLDIFS="$IFS"
+    IFS=":"
+    while read SEARCH REPLACE; do
+        [ $COUNTER -eq 20 ] && print_progress && COUNTER=0
+        SED_RULES="${SED_RULES}s/\(^\|[^-._]\b\)$SEARCH\(\b[^-._]\|$\)/\1$REPLACE\2/g;"
+        COUNTER=$(( COUNTER+1 ))
+    done < <(xtables_expand_variable $REPLACES|egrep "^[^#]"|sed -e 's,/,\\\\/,g')
+    IFS="$OLDIFS"
+    export ${XTABLES}_SED_RULES="$SED_RULES"
+    print_message
+}
+
+xtables_expand_string()
+{
+    [ -z "$1" ] && echo && return
+    local RULE
+    local RULES=$(xtables_expand_variable $XTABLES SED RULES)
+    if is_yes "$(xtables_expand_variable $XTABLES HUMAN SYNTAX)"; then
+	[ -z "$RULES" ] && print_error "Human syntax is enabled but no syntax file is loaded"
+	RULE=$(eval 'printf "%s\n" "$@"'|sed  -e "$RULES;s/[[:space:]]\+/\ /g")
+    else
+	RULE=$(eval 'printf "%s\n" "$@"')
+    fi
+    printf "%s\n" "$RULE"|egrep -q "^[^#]" && printf "%s\n" "$RULE" || echo
+}
+
+xtables_preload()
+{
+    local xtables=${CFW_TYPE:?unknown firewall type}
+    local XTABLES=$(echo "$xtables"|tr '[[:lower:]]' '[[:upper:]]')
+
+    is_yes "$(xtables_expand_variable $XTABLES HUMAN SYNTAX)" &&
+    [ -z "$(xtables_expand_variable $XTABLES SYNTAX)" ] &&
+    {
+	local SYNTAX_DIR=$(xtables_expand_variable $XTABLES SYNTAX DIR)
+	xtables_load_syntax ${SYNTAX_DIR:=/etc/net/ifaces/default/fw/$xtables}/syntax
+	xtables_create_sed_rules ${XTABLES}_SYNTAX
+    }
+}
+
+# xtables_load_rules_from_file /path/to/<table>/<chain>
+xtables_load_rules_from_file()
+{
+    local FILE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN="${FILE##*/}"
+    local TABLE="${FILE%/*}"; TABLE="${TABLE##*/}"
+    local RULE
+    local RULES
+    if [ -f "$FILE" ] && [ -s "$FILE" ]; then
+	print_message -n -e "\tLoading rules for the \"$CHAIN\" chain in the \"$TABLE\" table"
+	RULES=$(< "$FILE")
+	while read RULE; do
+	    RULE=$(xtables_expand_string "$RULE")
+	    [ -z "$RULE" ] ||
+	    {
+		read FIRST SECOND REST < <(echo $RULE)
+		case $FIRST in
+		    "-A"|"-D"|"-I"|"-P")
+    	    			    xtables_push_rule $TABLE $FIRST $CHAIN $SECOND $REST
+				    ;;
+			*)
+    	    			    xtables_push_rule $TABLE $CHAIN $FIRST $SECOND $REST
+				    ;;
+		esac
+	    }
+	    print_progress
+	done < <(echo "$RULES"|egrep "^[^#]")
+	print_message
+    fi
+}
+
+# xtables_flush_rules_from_file /path/to/<table>/<chain> [flush]
+xtables_flush_rules_from_file()
+{
+    local FILE=${1:?missing 1st arg to $FUNCNAME}
+    local CHAIN="${FILE##*/}"
+    local TABLE="${FILE%/*}"; TABLE="${TABLE##*/}"
+    local RULE
+    local RULES
+    if [ -f "$FILE" ]; then
+	if [ "$NAME" != "default" ] && [ "$3" != "flush" ]; then
+	    [ ! -s "$FILE" ] && return
+	    print_message -n -e "\tUnloading rules for the \"$CHAIN\" chain in the \"$TABLE\" table"
+	    RULES=$(tac "$FILE")
+	    while read RULE; do
+		RULE=$(xtables_expand_string "$RULE")
+		[ -z "$RULE" ] ||
+		{
+		    read  FIRST SECOND REST < <(echo $RULE)
+		    case $FIRST in
+			    "-A"|"-D"|"-I"|"-P")
+					xtables_pop_rule $TABLE $FIRST $CHAIN $SECOND $REST
+					;;
+			    *)
+        			        xtables_pop_rule $TABLE $CHAIN $FIRST $SECOND $REST
+				        ;;
+		    esac
+		}				
+		print_progress
+		done < <(echo "$RULES"|egrep "^[^#]")
+		print_message
+	else
+	    # Flush rules only when stop networking
+	    print_message -e "\tFlushing the \"$CHAIN\" chain in the \"$TABLE\" table"
+	    xtables_flush_chain $TABLE $CHAIN
+	fi
+    fi
+}
+
+xtables_start()
+{
+    local NAME=${1:?missing 1st arg to $FUNCNAME}
+    shift
+
+    local xtables=${CFW_TYPE:?unknown firewall type}
+    local XTABLES=$(echo "$xtables"|tr '[[:lower:]]' '[[:upper:]]')
+    local XTABLES_INPUT_POLICY=$(xtables_expand_variable $XTABLES INPUT POLICY)
+    local XTABLES_FORWARD_POLICY=$(xtables_expand_variable $XTABLES FORWARD POLICY)
+    local XTABLES_OUTPUT_POLICY=$(xtables_expand_variable $XTABLES OUTPUT POLICY)
+    local XTABLES_SYSTEM_CHAINS=$(xtables_expand_variable $XTABLES SYSTEM CHAINS)
+
+    local TABLE
+    local CHAIN
+    local ARGS
+
+    [ "$NAME" = "default" ] &&  print_message "Starting $xtables for $NAME" ||  print_message -e "\nStarting $xtables for $NAME"
+    # Set defaut policy
+    if [ "$NAME" = "default" ]; then
+	TABLE=filter
+	[ -z "$XTABLES_INPUT_POLICY" ] ||
+	{
+	    print_message -e "\tSetting $XTABLES_INPUT_POLICY policy for the \"INPUT\" chain in the \"$TABLE\" table"
+	    xtables_chain_policy $TABLE INPUT "$XTABLES_INPUT_POLICY"
+	}
+	[ -z "$XTABLES_FORWARD_POLICY" ] || 
+	{
+	    print_message -e "\tSetting $XTABLES_FORWARD_POLICY policy for the \"FORWARD\" chain in the \"$TABLE\" table"
+	    xtables_chain_policy $TABLE FORWARD "$XTABLES_FORWARD_POLICY"
+	}
+	[ -z "$XTABLES_OUTPUT_POLICY" ] ||
+	{
+	    print_message -e "\tSetting $XTABLES_OUTPUT_POLICY policy for the \"OUTPUT\" chain in the \"$TABLE\" table"
+	    xtables_chain_policy $TABLE OUTPUT "$XTABLES_OUTPUT_POLICY"
+	}
+	TABLE=
+    fi
+    
+    local cfwdir
+    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$xtables" && cd "$cfwdir" || return 0
+
+    # Load modules
+    xtables_loadmodules
+
+    # Create user chains
+    for TABLE in *; do
+	[ ! -d "$TABLE" ] && continue
+	for CHAIN in "$TABLE"/*; do
+	    CHAIN=$(basename "$CHAIN")
+	    [ "$TABLE/$CHAIN" != "$TABLE/loadorder" -a  -f "$TABLE/$CHAIN" -a \
+		"$TABLE/${CHAIN%.rpm*}" = "$TABLE/$CHAIN" -a "$TABLE/${CHAIN%\~}" = "$TABLE/$CHAIN" ] || continue
+	    egrep -q "([^-]\b|^)$CHAIN(\b[^-]|$)" < <(echo "$XTABLES_SYSTEM_CHAINS") ||
+	    {
+		print_message -e "\tCreating the \"$CHAIN\" chain in the \"$TABLE\" table"
+		xtables_create_chain $TABLE $CHAIN
+	    }
+	done
+    done
+
+    # Load rules after creating _all_ chains
+    while read; do
+	xtables_load_rules_from_file $REPLY
+    done < <(xtables_walk .)
+    [ "$NAME" = "default" ] || print_message -n -e "\t"
+}
+
+xtables_stop()
+{
+    local NAME=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    
+    local xtables=${CFW_TYPE:?unknown firewall type}
+    local XTABLES=$(echo "$xtables"|tr '[[:lower:]]' '[[:upper:]]')
+    local XTABLES_SYSTEM_CHAINS=$(xtables_expand_variable $XTABLES SYSTEM CHAINS)
+    
+    local TABLE
+    local CHAIN
+    local ARGS
+
+    [ "$NAME" = "default" ] && print_message "Stopping $xtables for $NAME" || print_message -e  "\nStopping $xtables for $NAME"
+    local cfwdir
+    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/$xtables" && cd "$cfwdir" || return 0
+
+    # Flush rules
+    while read; do
+	xtables_flush_rules_from_file $REPLY
+    done < <(xtables_walk . |tac)
+
+    # Delete user chains
+    for TABLE in *; do
+	[ ! -d "$TABLE" ] && continue
+	for CHAIN in "$TABLE"/*; do
+	    CHAIN=$(basename "$CHAIN")
+	    [ "$TABLE/$CHAIN" != "$TABLE/loadorder" -a  -f "$TABLE/$CHAIN" -a \
+		"$TABLE/${CHAIN%.rpm*}" = "$TABLE/$CHAIN" -a "$TABLE/${CHAIN%\~}" = "$TABLE/$CHAIN" ] || continue
+	    egrep -q "([^-]\b|^)$CHAIN(\b[^-]|$)" < <(echo "$XTABLES_SYSTEM_CHAINS") ||
+	    {
+		print_message -e "\tDeleting the \"$CHAIN\" chain from the \"$TABLE\" table"
+		xtables_delete_chain $TABLE $CHAIN
+	    }
+	done
+    done
+
+    # Unload modules
+    xtables_unloadmodules
+
+    # Set ACCEPT policy
+    if [ "$NAME" = "default" ]; then
+	TABLE=filter
+	print_message -e "\tSetting ACCEPT policy for the \"INPUT\" chain in the \"$TABLE\" table"
+	xtables_chain_policy $TABLE INPUT ACCEPT
+	print_message -e "\tSetting ACCEPT policy for the \"FORWARD\" chain in the \"$TABLE\" table"
+	xtables_chain_policy $TABLE FORWARD ACCEPT
+	print_message -e "\tSetting ACCEPT policy for the \"OUTPUT\" chain in the \"$TABLE\" table"
+	xtables_chain_policy $TABLE OUTPUT ACCEPT
+	TABLE=
+    else
+	print_message -n -e "\t"
+    fi
+}
+
+ipset_create_set()
+{
+    local FILE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    local SET="${FILE##*/}"
+    local TYPE="${FILE%/*}"; TYPE="${TYPE##*/}"
+    local RULE=$(egrep "^[^#$]" "$FILE")
+    local HEADER=$(head -1 <<<"$RULE")
+    local MEMBERS=$(sed 1d <<<"$RULE")
+
+    [ -n "$HEADER" ] || return 0
+    print_message -e "\tCreating the \"$SET\" set of the \"$TYPE\" type"
+    eval "$IPSET create $SET $TYPE $HEADER" || print_error "$IPSET -N $SET $TYPE $HEADER"
+
+    [ -n "$MEMBERS" ] || return 0
+    while read; do
+	eval "$IPSET add $SET $REPLY" || print_error "$IPSET -A $SET $REPLY"
+    done <<<"$MEMBERS"
+}
+
+ipset_destroy_set()
+{
+    local FILE=${1:?missing 1st arg to $FUNCNAME}
+    shift
+    local SET="${FILE##*/}"
+    local TYPE="${FILE%/*}"; TYPE="${TYPE##*/}"
+    local RULE=$(egrep "^[^#$]" "$FILE")
+
+    [ -n "$RULE" ] || return 0
+    print_message -e "\tDestroying the \"$SET\" set of the \"$TYPE\" type"
+    eval "$IPSET destroy $SET" || print_error "$IPSET -X $SET"
+}
+
+ipset_start()
+{
+    local NAME=${1:?missing 1st arg to $FUNCNAME}
+    [ "$NAME" = "default" ] &&  print_message "Starting ipset for $NAME" ||  print_message -e "\nStarting ipset for $NAME"
+
+    local cfwdir
+    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/ipset" && cd "$cfwdir" || return 0
+
+    # Load modules
+    xtables_loadmodules
+
+    # Load sets
+    while read; do
+	ipset_create_set $REPLY
+    done < <(xtables_walk .)
+
+    [ "$NAME" = "default" ] || print_message -n -e "\t"
+}
+
+ipset_stop()
+{
+    local NAME=${1:?missing 1st arg to $FUNCNAME}
+    shift
+
+    [ "$NAME" = "default" ] && print_message "Stopping ipset for $NAME" || print_message -e  "\nStopping ipset for $NAME"
+    local cfwdir
+    profiled_filename_dir cfwdir "$MYIFACEDIR/fw/ipset" && cd "$cfwdir" || return 0
+
+    # Destroy all sets
+    while read; do
+	ipset_destroy_set $REPLY
+    done < <(xtables_walk . |tac)
+
+    # Unload modules
+    xtables_unloadmodules
+}
