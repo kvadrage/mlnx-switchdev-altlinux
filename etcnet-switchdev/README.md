@@ -1,4 +1,4 @@
-Etcnet fork, patched to work with [Mellanox Switchdev](http://www.mellanox.com/related-docs/prod_switch_software/PB_Switchdev.pdf) driver.
+## Etcnet fork, patched to work with [Mellanox Switchdev](http://www.mellanox.com/related-docs/prod_switch_software/PB_Switchdev.pdf) driver.
 
 Please use [switchdev mlxsw driver wiki](https://github.com/Mellanox/mlxsw/wiki/Overview) as a reference.
 
