@@ -1,0 +1,39 @@
+---
+- name: enable routing and disable RPF
+  lineinfile:
+    dest: /etc/net/sysctl.conf
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: "^net.ipv4.ip_forward", line: "net.ipv4.ip_forward = 1"}
+    - { regexp: "^net.ipv4.conf.default.rp_filter", line: "net.ipv4.conf.default.rp_filter = 0"}
+  tags:
+    - enable_routing
+
+- name: create ifaces vars for all interface types
+  set_fact:
+    ifaces_all: "{{ ({} | combine(node[ansible_hostname].interfaces|default({}),
+                node[ansible_hostname].bonds|default({}),
+                node[ansible_hostname].bridges|default({}))) }}"
+  tags:
+    - quagga_setup
+- debug:
+    msg: "ifaces_all: {{ifaces_all.keys()}}"
+  tags:
+    - quagga_setup
+
+- name: render zebra configuration
+  template: src=zebra.j2 dest=/etc/quagga/zebra.conf owner=quagga group=quagga mode=0600
+  notify:
+    - check zebra
+    - restart zebra
+  tags:
+    - quagga_setup
+
+- name: render ospfd configuration
+  template: src=ospfd.j2 dest=/etc/quagga/ospfd.conf owner=quagga group=quagga mode=0600
+  notify:
+    - check ospfd
+    - restart ospfd
+  tags:
+    - quagga_setup

@@ -2,6 +2,25 @@ global:
   save_local: "enable"
   ignore_ifaces: ["default", "eth0", "unknown"]
 
+  route_maps:
+    filter-cisco-out:
+      - "route-map filter-cisco-out permit 10"
+      - "  match ip address 10"
+      - "route-map filter-cisco-out deny 100"
+
+  access_lists:
+    10:
+      - "permit 10.0.48.0 0.255.0.255"
+      - "permit 10.0.0.0 0.0.255.255"
+    20:
+      - "deny any"
+
+  prefix_lists:
+    local_net_list:
+      - "ip 10 permit 192.168.0.0/16 le 32"
+      - "ip 10 permit 172.16.0.0/16 le 32"
+      - "ip 100 deny any"
+
 node:
   sw1:
     interfaces:
@@ -27,6 +46,9 @@ node:
         ipv4_addresses: ["10.0.255.1/24"]
         autoneg: "off"
         speed: 40000
+        ospf:
+          network_type: "point-to-point"
+#          priority: 1
 
       br0.10:
         ipv4_addresses: ["172.16.10.1/24"]
@@ -55,6 +77,17 @@ node:
         pvid: 1
         ipv4_addresses: ["172.16.1.254/24"]
 
+    OSPF:
+      router_id: "1.1.1.1"
+      interfaces: ["swp16"]
+      networks:
+        - { net: "1.1.1.1/32", area: 0 }
+        - { net: "172.16.1.0/24", area: 0 }
+        - { net: "10.0.255.0/24", area: 0 }
+      redistribute:
+        - connected:
+        - static:
+#        - connected: "route-map filter-cisco-out metric 100 metric-type 2"
   server3:
     interfaces:
 #      eth0:

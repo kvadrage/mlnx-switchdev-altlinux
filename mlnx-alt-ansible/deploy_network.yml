@@ -5,7 +5,7 @@
   become_method: sudo
   roles:
     - etcnet_ifaces
-#    - quagga
+    - quagga_alt
 
 - hosts: servers_alt
   user: admin
