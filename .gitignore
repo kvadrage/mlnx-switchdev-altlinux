@@ -87,6 +87,3 @@ ENV/
 
 # Rope project settings
 .ropeproject
-
-# locally rendered config
-./mlnx-alt-ansible/config/*

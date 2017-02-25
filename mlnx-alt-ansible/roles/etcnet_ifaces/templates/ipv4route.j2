@@ -1,0 +1,6 @@
+{% set intvars = item %}
+{% if intvars.ipv4_routes is defined %}
+{% for route in intvars.ipv4_routes %}
+{{ route }}
+{% endfor %}
+{% endif %}

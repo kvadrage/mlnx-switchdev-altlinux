@@ -1,0 +1,4 @@
+TYPE=vlan
+HOST=br0
+VID=10
+BOOTPROTO=static

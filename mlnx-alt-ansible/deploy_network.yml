@@ -1,0 +1,15 @@
+---
+- hosts: switches_alt
+  user: admin
+  become: yes
+  become_method: sudo
+  roles:
+    - etcnet_ifaces
+#    - quagga
+
+- hosts: servers_alt
+  user: admin
+  become: yes
+  become_method: sudo
+  roles:
+    - etcnet_ifaces

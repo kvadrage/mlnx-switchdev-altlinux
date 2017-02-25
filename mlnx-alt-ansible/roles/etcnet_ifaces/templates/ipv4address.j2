@@ -1,0 +1,6 @@
+{% set intvars = ifaces_all[item] %}
+{% if intvars.ipv4_addresses is defined %}
+{% for addr in intvars.ipv4_addresses %}
+{{ addr | ipv4 }}
+{% endfor %}
+{% endif %}

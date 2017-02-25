@@ -1,0 +1,4 @@
+TYPE=eth
+DISABLED=no
+ONBOOT=yes
+NM_CONTROLLED=no

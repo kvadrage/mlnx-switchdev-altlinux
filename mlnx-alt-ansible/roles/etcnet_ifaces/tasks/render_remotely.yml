@@ -1,0 +1,98 @@
+---
+- name: setting ifaces folder fact
+  set_fact:
+    ifaces_folder: "/etc/net/ifaces"
+- debug:
+    msg: "ifaces_folder: {{ifaces_folder}}"
+
+- name: create ifaces vars
+  set_fact:
+    ignore_ifaces: "{{global.ignore_ifaces | default([])}}"
+    ifaces_all: "{{ ({} | combine(node[ansible_hostname].interfaces|default({}),
+                node[ansible_hostname].bonds|default({}),
+                node[ansible_hostname].bridges|default({}))) }}"
+    ifaces_eth: "{{node[ansible_hostname].interfaces|default({})}}"
+    ifaces_bonds: "{{node[ansible_hostname].bonds|default({})}}"
+    ifaces_bridges: "{{node[ansible_hostname].bridges|default({})}}"
+- debug:
+    msg:
+      - "ignore_ifaces: {{ignore_ifaces}}"
+      - "ifaces_eth: {{ifaces_eth.keys()}}"
+      - "ifaces_bonds: {{ifaces_bonds.keys()}}"
+      - "ifaces_bridges: {{ifaces_bridges.keys()}}"
+
+- name: collect existing iface folders
+  find:
+    paths: "{{ifaces_folder}}"
+    recurse: false
+    file_type: directory
+  register: collected_folders
+- name: setting existing ifaces facts
+  set_fact:
+    existing_ifaces: "{{collected_folders.files|map(attribute='path')|map('basename')|list}}"
+- name: setting ifaces to remove facts
+  set_fact:
+    remove_ifaces: "{{existing_ifaces | difference(ifaces_all.keys() | union (ignore_ifaces))}}"
+- name: display existing ifaces
+  debug:
+    var: existing_ifaces
+- name: display ifaces to remove
+  debug:
+    var: remove_ifaces
+
+- name: remove existing iface folders that are not defined in facts
+  file:
+    path: "{{ifaces_folder}}/{{item}}/"
+    state: absent
+  tags:
+    - ifaces_setup
+  with_items: "{{remove_ifaces}}"
+  register: iface_folder_removed_result
+
+- name: create per-iface folders
+  file: path="{{ifaces_folder}}/{{item}}" state=directory recurse=yes
+  tags:
+    - ifaces_setup
+  with_items: "{{ifaces_all}}"
+  register: iface_folder_created_result
+
+- name: create rendered flat-file <iface>/ipv4address
+  template: src=ipv4address.j2 dest="{{ifaces_folder}}/{{item}}/ipv4address"
+  tags:
+    - ifaces_setup
+  with_items: "{{ifaces_all}}"
+  register: iface_ipv4address_rendered_result
+
+- name: create rendered flat-file <iface>/options for eth
+  template: src=options_eth.j2 dest={{ifaces_folder}}/{{item}}/options
+  tags:
+    - ifaces_setup
+  with_items: "{{ifaces_eth}}"
+  register: iface_eth_rendered_result
+
+- name: create rendered flat-file <iface>/options for bonds
+  template: src=options_bond.j2 dest={{ifaces_folder}}/{{item}}/options
+  tags:
+    - ifaces_setup
+  with_items: "{{ifaces_bonds}}"
+  register: iface_bonds_rendered_result
+
+- name: create rendered flat-file <iface>/options for bridges
+  template: src=options_bridge.j2 dest={{ifaces_folder}}/{{item}}/options
+  tags:
+    - ifaces_setup
+  with_items: "{{ifaces_bridges}}"
+  register: iface_bridges_rendered_result
+
+- name: set configuration changed fact
+  set_fact:
+    config_changed: "{{iface_folder_removed_result.changed or
+                    iface_folder_created_result.changed or
+                    iface_ipv4address_rendered_result.changed or
+                    iface_eth_rendered_result.changed or
+                    iface_bonds_rendered_result.changed or
+                    iface_bridges_rendered_result.changed}}"
+
+- name: restart network if configuration is changed
+  service: name=network state=restarted
+  when: config_changed

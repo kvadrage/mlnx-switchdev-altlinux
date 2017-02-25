@@ -1,0 +1,84 @@
+global:
+  save_local: "enable"
+  ignore_ifaces: ["default", "eth0", "unknown"]
+
+node:
+  sw1:
+    interfaces:
+      lo:
+        ipv4_addresses: ["127.0.0.1/32", "1.1.1.1/32"]
+
+#      eth0:
+#        dhcp: "enable"
+
+      swp1:
+        #vlans: "1 10"
+        #pvid: 1
+
+      swp2:
+        #vlans: "1 10"
+        #pvid: 1
+
+      swp3:
+
+      swp4:
+
+      swp16:
+        ipv4_addresses: ["10.0.255.1/24"]
+        autoneg: "off"
+        speed: 40000
+
+      br0.10:
+        ipv4_addresses: ["172.16.10.1/24"]
+
+    bonds:
+      bond1:
+        mode: "802.3ad"
+        members: ["swp1", "swp2"]
+        options: "miimon=100 lacp_rate=1"
+        vlans: "1 10"
+        #pvid: 1
+
+      bond2:
+        mode: "802.3ad"
+        members: ["swp3", "swp4"]
+        options: "miimon=100 lacp_rate=1"
+        vlans: "1 10"
+        #pvid: 1
+
+    bridges:
+      br0:
+        vlan_aware: "enable"
+        stp: "enable"
+        members: ["bond1", "bond2"]
+        vlans: "1 10 20 30 40"
+        pvid: 1
+        ipv4_addresses: ["172.16.1.254/24"]
+
+  server3:
+    interfaces:
+#      eth0:
+#        dhcp: "enable"
+      eth1:
+      eth2:
+    bonds:
+      bond0:
+        mode: "802.3ad"
+        members: ["eth1", "eth2"]
+        options: "miimon=100 lacp_rate=1"
+        ipv4_addresses: ["172.16.1.3/24"]
+        ipv4_routes: ["0.0.0.0/0 via 172.16.1.254"]
+
+  server4:
+    interfaces:
+#      eth0:
+#        dhcp: "enable"
+      eth1:
+      eth2:
+    bonds:
+      bond0:
+        mode: "802.3ad"
+        members: ["eth1", "eth2"]
+        options: "miimon=100 lacp_rate=1"
+        ipv4_addresses: ["172.16.1.4/24"]
+        ipv4_route: "0.0.0.0/0 via 172.16.1.254"
