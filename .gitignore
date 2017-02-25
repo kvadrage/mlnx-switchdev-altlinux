@@ -89,4 +89,4 @@ ENV/
 .ropeproject
 
 # locally rendered config
-.config
+./mlnx-alt-ansible/config/*
