@@ -2,8 +2,12 @@
 - name: setting ifaces folder fact
   set_fact:
     ifaces_folder: "/etc/net/ifaces"
+  tags:
+    - ifaces_setup
 - debug:
     msg: "ifaces_folder: {{ifaces_folder}}"
+  tags:
+    - ifaces_setup
 
 - name: create ifaces vars
   set_fact:
@@ -14,12 +18,16 @@
     ifaces_eth: "{{node[ansible_hostname].interfaces|default({})}}"
     ifaces_bonds: "{{node[ansible_hostname].bonds|default({})}}"
     ifaces_bridges: "{{node[ansible_hostname].bridges|default({})}}"
+  tags:
+    - ifaces_setup
 - debug:
     msg:
       - "ignore_ifaces: {{ignore_ifaces}}"
       - "ifaces_eth: {{ifaces_eth.keys()}}"
       - "ifaces_bonds: {{ifaces_bonds.keys()}}"
       - "ifaces_bridges: {{ifaces_bridges.keys()}}"
+  tags:
+    - ifaces_setup
 
 - name: collect existing iface folders
   find:
@@ -27,18 +35,24 @@
     recurse: false
     file_type: directory
   register: collected_folders
+  tags:
+    - ifaces_setup
 - name: setting existing ifaces facts
   set_fact:
     existing_ifaces: "{{collected_folders.files|map(attribute='path')|map('basename')|list}}"
-- name: setting ifaces to remove facts
-  set_fact:
     remove_ifaces: "{{existing_ifaces | difference(ifaces_all.keys() | union (ignore_ifaces))}}"
+  tags:
+    - ifaces_setup
 - name: display existing ifaces
   debug:
     var: existing_ifaces
+  tags:
+    - ifaces_setup
 - name: display ifaces to remove
   debug:
     var: remove_ifaces
+  tags:
+    - ifaces_setup
 
 - name: remove existing iface folders that are not defined in facts
   file:
@@ -62,6 +76,13 @@
     - ifaces_setup
   with_items: "{{ifaces_all}}"
   register: iface_ipv4address_rendered_result
+
+- name: create rendered flat-file <iface>/ipv4route
+  template: src=ipv4route.j2 dest="{{ifaces_folder}}/{{item}}/ipv4route"
+  tags:
+    - ifaces_setup
+  with_items: "{{ifaces_all}}"
+  register: iface_ipv4route_rendered_result
 
 - name: create rendered flat-file <iface>/options for eth
   template: src=options_eth.j2 dest={{ifaces_folder}}/{{item}}/options
@@ -87,12 +108,17 @@
 - name: set configuration changed fact
   set_fact:
     config_changed: "{{iface_folder_removed_result.changed or
+                    iface_ipv4route_rendered_result.changed or
                     iface_folder_created_result.changed or
                     iface_ipv4address_rendered_result.changed or
                     iface_eth_rendered_result.changed or
                     iface_bonds_rendered_result.changed or
                     iface_bridges_rendered_result.changed}}"
+  tags:
+    - ifaces_setup
 
 - name: restart network if configuration is changed
   service: name=network state=restarted
   when: config_changed
+  tags:
+    - ifaces_setup

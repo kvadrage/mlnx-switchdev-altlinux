@@ -69,6 +69,12 @@
   become: false
   with_items: "{{ifaces_all}}"
 
+- name: create rendered flat-file <iface>/ipv4route locally
+  template: src=ipv4route.j2 dest="{{ifaces_folder}}/{{item}}/ipv4route"
+  delegate_to: localhost
+  become: false
+  with_items: "{{ifaces_all}}"
+
 - name: create rendered flat-file <iface>/options for eth
   template: src=options_eth.j2 dest={{ifaces_folder}}/{{item}}/options
   delegate_to: localhost

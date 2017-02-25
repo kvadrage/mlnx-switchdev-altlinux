@@ -114,4 +114,4 @@ node:
         members: ["eth1", "eth2"]
         options: "miimon=100 lacp_rate=1"
         ipv4_addresses: ["172.16.1.4/24"]
-        ipv4_route: "0.0.0.0/0 via 172.16.1.254"
+        ipv4_routes: ["0.0.0.0/0 via 172.16.1.254"]

@@ -1,4 +1,4 @@
-{% set intvars = item %}
+{% set intvars = ifaces_all[item] %}
 {% if intvars.ipv4_routes is defined %}
 {% for route in intvars.ipv4_routes %}
 {{ route }}
