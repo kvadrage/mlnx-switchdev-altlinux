@@ -48,7 +48,7 @@ node:
         speed: 40000
         ospf:
           network_type: "point-to-point"
-#          priority: 1
+          #priority: 1
 
       br0.10:
         ipv4_addresses: ["172.16.10.1/24"]
@@ -87,7 +87,7 @@ node:
       redistribute:
         - connected:
         - static:
-#        - connected: "route-map filter-cisco-out metric 100 metric-type 2"
+        #- connected: "route-map filter-cisco-out metric 100 metric-type 2"
   server3:
     interfaces:
 #      eth0:
@@ -100,7 +100,7 @@ node:
         members: ["eth1", "eth2"]
         options: "miimon=100 lacp_rate=1"
         ipv4_addresses: ["172.16.1.3/24"]
-        ipv4_routes: ["0.0.0.0/0 via 172.16.1.254"]
+        ipv4_routes: ["172.16.2.0/24 via 172.16.1.254"]
 
   server4:
     interfaces:
@@ -114,4 +114,4 @@ node:
         members: ["eth1", "eth2"]
         options: "miimon=100 lacp_rate=1"
         ipv4_addresses: ["172.16.1.4/24"]
-        ipv4_routes: ["0.0.0.0/0 via 172.16.1.254"]
+        ipv4_routes: ["172.16.2.0/24 via 172.16.1.254"]

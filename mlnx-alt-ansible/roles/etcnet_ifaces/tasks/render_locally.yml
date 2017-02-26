@@ -1,14 +1,7 @@
 ---
-- name: setting local ifaces folder fact
-  set_fact:
-    ifaces_folder: "config/{{ansible_hostname}}/etc/net/ifaces"
-  delegate_to: localhost
-  become: false
-  tags:
-    - ifaces_setup
-    - local
-- debug:
-    msg: "ifaces_folder: {{ifaces_folder}}"
+- name: display ifaces folder
+  debug:
+    msg: "ifaces_folder_local: {{ifaces_folder_local}}"
   tags:
     - ifaces_setup
     - local
@@ -39,7 +32,7 @@
 
 - name: collect existing iface folders locally
   find:
-    paths: "{{ifaces_folder}}"
+    paths: "{{ifaces_folder_local}}"
     recurse: True
     file_type: directory
   delegate_to: localhost
@@ -73,9 +66,9 @@
     - ifaces_setup
     - local
 
-- name: remove existing iface folders that are not defined in facts
+- name: remove existing iface folders that are not defined in facts locally
   file:
-    path: "{{ifaces_folder}}/{{item}}/"
+    path: "{{ifaces_folder_local}}/{{item}}/"
     state: absent
   delegate_to: localhost
   become: false
@@ -85,7 +78,7 @@
     - local
 
 - name: create per iface folders locally
-  file: path="{{ifaces_folder}}/{{item}}" state=directory recurse=yes
+  file: path="{{ifaces_folder_local}}/{{item}}" state=directory recurse=yes
   delegate_to: localhost
   become: false
   with_items: "{{ifaces_all}}"
@@ -94,7 +87,7 @@
     - local
 
 - name: create rendered flat-file <iface>/ipv4address locally
-  template: src=ipv4address.j2 dest="{{ifaces_folder}}/{{item}}/ipv4address"
+  template: src=ipv4address.j2 dest="{{ifaces_folder_local}}/{{item}}/ipv4address"
   delegate_to: localhost
   become: false
   with_items: "{{ifaces_all}}"
@@ -103,7 +96,7 @@
     - local
 
 - name: create rendered flat-file <iface>/ipv4route locally
-  template: src=ipv4route.j2 dest="{{ifaces_folder}}/{{item}}/ipv4route"
+  template: src=ipv4route.j2 dest="{{ifaces_folder_local}}/{{item}}/ipv4route"
   delegate_to: localhost
   become: false
   with_items: "{{ifaces_all}}"
@@ -111,8 +104,8 @@
     - ifaces_setup
     - local
 
-- name: create rendered flat-file <iface>/options for eth
-  template: src=options_eth.j2 dest={{ifaces_folder}}/{{item}}/options
+- name: create rendered flat-file <iface>/options for eth locally
+  template: src=options_eth.j2 dest={{ifaces_folder_local}}/{{item}}/options
   delegate_to: localhost
   become: false
   with_items: "{{ifaces_eth}}"
@@ -120,8 +113,8 @@
     - ifaces_setup
     - local
 
-- name: create rendered flat-file <iface>/options for bonds
-  template: src=options_bond.j2 dest={{ifaces_folder}}/{{item}}/options
+- name: create rendered flat-file <iface>/options for bonds locally
+  template: src=options_bond.j2 dest={{ifaces_folder_local}}/{{item}}/options
   delegate_to: localhost
   become: false
   with_items: "{{ifaces_bonds}}"
@@ -129,8 +122,8 @@
     - ifaces_setup
     - local
 
-- name: create rendered flat-file <iface>/options for bridges
-  template: src=options_bridge.j2 dest={{ifaces_folder}}/{{item}}/options
+- name: create rendered flat-file <iface>/options for bridges locally
+  template: src=options_bridge.j2 dest={{ifaces_folder_local}}/{{item}}/options
   delegate_to: localhost
   become: false
   with_items: "{{ifaces_bridges}}"

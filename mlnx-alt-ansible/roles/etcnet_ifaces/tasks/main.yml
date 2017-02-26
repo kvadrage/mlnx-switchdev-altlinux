@@ -2,12 +2,13 @@
 - name: render files locally
   include: "render_locally.yml"
   static: no
-  when: global.save_local is defined and global.save_local == "enable"
+  when: save_local is defined and save_local == "enable"
   tags:
     - ifaces_setup
     - local
 
 - name: render files remotely
   include: render_remotely.yml
+  static: no
   tags:
     - ifaces_setup

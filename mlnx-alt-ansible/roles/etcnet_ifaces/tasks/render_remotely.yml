@@ -1,10 +1,6 @@
 ---
-- name: setting ifaces folder fact
-  set_fact:
-    ifaces_folder: "/etc/net/ifaces"
-  tags:
-    - ifaces_setup
-- debug:
+- name: display ifaces folder
+  debug:
     msg: "ifaces_folder: {{ifaces_folder}}"
   tags:
     - ifaces_setup
