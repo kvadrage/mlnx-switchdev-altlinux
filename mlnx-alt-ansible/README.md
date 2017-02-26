@@ -1,5 +1,5 @@
-# Ansible play to configure Alt Linux setup with Mellanox Spectrum switch
-
+# Switchdev and Alt Linux play for Ansible
+Ansible play to configure Alt Linux setup with Mellanox Spectrum switch.
 ## Overview
 This play automates network configuration for simple setup, based on Alt Linux servers and Mellanox Spectrum switch (also running Alt Linux with switchdev deriver).
 
