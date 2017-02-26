@@ -40,6 +40,10 @@
 - name: setting existing ifaces facts
   set_fact:
     existing_ifaces: "{{collected_folders.files|map(attribute='path')|map('basename')|list}}"
+  tags:
+    - ifaces_setup
+- name: setting ifaces to remove facts
+  set_fact:
     remove_ifaces: "{{existing_ifaces | difference(ifaces_all.keys() | union (ignore_ifaces))}}"
   tags:
     - ifaces_setup

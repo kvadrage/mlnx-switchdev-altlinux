@@ -22,6 +22,24 @@
   tags:
     - quagga_setup
 
+- name: create local quagga folder
+  file: path="config/{{ansible_hostname}}/etc/quagga" state=directory recurse=yes
+  delegate_to: localhost
+  become: false
+  when: global.save_local is defined and global.save_local == "enable"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: render zebra configuration locally
+  template: src=zebra.j2 dest=config/{{ansible_hostname}}/etc/quagga/zebra.conf
+  delegate_to: localhost
+  become: false
+  when: global.save_local is defined and global.save_local == "enable"
+  tags:
+    - quagga_setup
+    - local
+
 - name: render zebra configuration
   template: src=zebra.j2 dest=/etc/quagga/zebra.conf owner=quagga group=quagga mode=0600
   notify:
@@ -29,6 +47,15 @@
     - restart zebra
   tags:
     - quagga_setup
+
+- name: render ospfd configuration locally
+  template: src=ospfd.j2 dest=config/{{ansible_hostname}}/etc/quagga/ospfd.conf
+  delegate_to: localhost
+  become: false
+  when: global.save_local is defined and global.save_local == "enable"
+  tags:
+    - quagga_setup
+    - local
 
 - name: render ospfd configuration
   template: src=ospfd.j2 dest=/etc/quagga/ospfd.conf owner=quagga group=quagga mode=0600
