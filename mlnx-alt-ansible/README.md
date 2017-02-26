@@ -1,7 +1,7 @@
 # Switchdev and Alt Linux play for Ansible
 Ansible play to configure Alt Linux setup with Mellanox Spectrum switch.
 ## Overview
-This play automates network configuration for simple setup, based on Alt Linux servers and Mellanox Spectrum switch (also running Alt Linux with switchdev driver).
+This play automates network configuration for simple setup, based on Alt Linux servers and Mellanox Spectrum switch (also running Alt Linux with [mlxsw](https://github.com/Mellanox/mlxsw/wiki/Overview) switchdev driver).
 
 ## Network topology
 ```
@@ -13,14 +13,14 @@ This play automates network configuration for simple setup, based on Alt Linux s
 ```
 
 ## Funtionality
-* Templates the interfaces configuration for Etcnet network configuration subsystem
+* Templates the interfaces configuration for [Etcnet](https://www.altlinux.org/Etcnet) network configuration subsystem
   * basic interfaces configuration
   * bonds configuration
-  * VLAN-aware bridge configuration
+  * VLAN-aware bridge configuration (for [patched](https://github.com/kvadrage/mlnx-switchdev-altlinux/tree/devel/etcnet-switchdev) Etcnet version only)
   * static routing
 * Enables IPv4 routing on a switch and disables RPF check
 * Configures Quagga with OSPF
-  * Templates /etc/quagga/zebra.conf with basic configuration and ACLs, prefix-lists, route_maps
+  * Templates /etc/quagga/zebra.conf with basic configuration and ACLs, prefix-lists, route-maps
   * Templates /etc/quagga/ospfd.conf with OSPF configuration
 
 ## Usage
