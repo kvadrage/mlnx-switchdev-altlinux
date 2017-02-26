@@ -24,7 +24,7 @@ This play automates network configuration for simple setup, based on Alt Linux s
   * Templates /etc/quagga/ospfd.conf with OSPF configuration
 
 ## Usage
-* Install ansible >= 2.2 on a management server
+* Install Ansible >= 2.0 on a management server
 * Clone this repository
 * Set your SSH usernames in `deploy_network.yml`
 * Modify config in `group_vars/all` if required

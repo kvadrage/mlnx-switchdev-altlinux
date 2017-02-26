@@ -1,4 +1,11 @@
 ---
+- hosts: localhost
+  pre_tasks:
+    - name: Verify Ansible version requirements
+      assert:
+        that: "ansible_version.full | version_compare('2.0', '>=')"
+        msg: "Ansible version 2.0 or higher is required to run this playbook"
+
 - hosts: switches_alt
   user: admin
   become: yes
