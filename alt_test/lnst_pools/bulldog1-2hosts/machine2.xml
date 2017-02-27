@@ -5,14 +5,14 @@
 		<param name="rpc_port" value="9999"/>
 	</params>
 	<interfaces>
-		<eth id="eth2" label="A">
+		<eth id="eth2" label="C">
 			<params>
 				<param name="hwaddr" value="7c:fe:90:75:3c:48"/>
 			</params>
 		</eth>
-		<eth id="eth1" label="B">
+		<eth id="eth3" label="D">
 			<params>
-				<param name="hwaddr" value="00:25:90:af:e1:d9"/>
+				<param name="hwaddr" value="7c:fe:90:75:3c:f0"/>
 			</params>
 		</eth>
 	</interfaces>
