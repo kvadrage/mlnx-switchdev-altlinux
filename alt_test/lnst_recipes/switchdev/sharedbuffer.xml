@@ -8,13 +8,13 @@
         </host>
         <host id="machine2">
             <interfaces>
-                <eth id="if1" label="A" />
+                <eth id="if1" label="B" />
             </interfaces>
         </host>
         <host id="switch">
             <interfaces>
                 <eth id="if1" label="A" />
-                <eth id="if2" label="C" />
+                <eth id="if2" label="B" />
             </interfaces>
         </host>
     </network>

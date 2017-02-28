@@ -10,7 +10,7 @@
         <host id="machine2">
             <params/>
             <interfaces>
-                <eth id="if1" label="A" />
+                <eth id="if1" label="B" />
             </interfaces>
         </host>
         <host id="switch">

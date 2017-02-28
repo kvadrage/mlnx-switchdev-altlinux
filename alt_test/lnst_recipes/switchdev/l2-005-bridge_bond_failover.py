@@ -27,7 +27,7 @@ def do_task(ctl, hosts, ifaces, aliases):
 
     sw.create_bridge(slaves=[sw_lag1, sw_lag2], options={"vlan_filtering": 1})
 
-    sleep(15)
+    sleep(30)
 
     tl = TestLib(ctl, aliases)
     tl.ping_simple(m1_lag1, m2_lag1)
@@ -37,17 +37,20 @@ def do_task(ctl, hosts, ifaces, aliases):
 
     sw_if1.set_link_up()
     sw_if2.set_link_down()
+    sleep(10)
     tl.ping_simple(m1_lag1, m2_lag1, limit_rate=50)
 
     sw_if2.set_link_up()
     sw_if1.set_link_down()
     sw_if3.set_link_down()
+    sleep(10)
     tl.ping_simple(m1_lag1, m2_lag1, limit_rate=50)
 
     sw_if1.set_link_up()
     sw_if3.set_link_up()
     sw_if2.set_link_down()
     sw_if4.set_link_down()
+    sleep(10)
     tl.ping_simple(m1_lag1, m2_lag1, limit_rate=50)
 
 do_task(ctl, [ctl.get_host("machine1"),
