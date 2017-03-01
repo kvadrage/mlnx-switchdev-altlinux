@@ -7,7 +7,7 @@
         msg: "Ansible version 2.0 or higher is required to run this playbook"
 
 - hosts: switches_alt
-  user: admin
+  user: buy
   become: yes
   become_method: sudo
   roles:
@@ -15,7 +15,7 @@
     - quagga_alt
 
 - hosts: servers_alt
-  user: admin
+  user: buy
   become: yes
   become_method: sudo
   roles:
