@@ -15,6 +15,7 @@ interface {{iface}}
   ip ospf priority {{ intvars[iface].ospf["priority"] }}
 {%  endif %}
 {% endif %}
+!
 {% endfor %}
 !
 hostname {{ansible_hostname}}
@@ -43,4 +44,5 @@ router ospf
   redistribute {{ type.keys()[0] }} {{ type.get(type.keys()[0], "") }}
 {%    endfor %}
 {%  endif %}
+  exit
 {% endif %}

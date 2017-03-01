@@ -43,6 +43,7 @@
 - name: render zebra configuration
   template: src=zebra.j2 dest={{zebra_conf}} owner=quagga group=quagga mode=0600
   notify:
+    - enable zebra
     - check zebra
     - restart zebra
   tags:
@@ -60,7 +61,26 @@
 - name: render ospfd configuration
   template: src=ospfd.j2 dest={{ospfd_conf}} owner=quagga group=quagga mode=0600
   notify:
+    - enable ospfd
     - check ospfd
     - restart ospfd
+  tags:
+    - quagga_setup
+
+- name: render bgpd configuration locally
+  template: src=bgpd.j2 dest={{bgpd_conf_local}}
+  delegate_to: localhost
+  become: false
+  when: save_local is defined and save_local == "enable"
+  tags:
+    - quagga_setup
+    - local
+
+- name: render bgpd configuration
+  template: src=bgpd.j2 dest={{bgpd_conf}} owner=quagga group=quagga mode=0600
+  notify:
+    - enable bgpd
+    - check bgpd
+    - restart bgpd
   tags:
     - quagga_setup

@@ -1,0 +1,43 @@
+{% set node = node[ansible_hostname] %}
+{% set intvars = ifaces_all %}
+{% set bgpvars = node.BGP %}
+!
+! bgpd.conf template for switch ({{ansible_hostname}})
+! Created by Ansible
+!
+hostname {{ansible_hostname}}
+log file /var/log/quagga/bgpd.log informational
+service password-encryption
+no banner motd
+!
+{% if bgpvars is defined %}
+router bgp {{ bgpvars.asn }}
+{%  if bgpvars.router_id is defined %}
+  bgp router-id {{ bgpvars.router_id }}
+{%  endif %}
+{%  if bgpvars.redistribute is defined %}
+{%    for type in bgpvars.redistribute %}
+  redistribute {{ type.keys()[0] }} {{ type.get(type.keys()[0], "") }}
+{%    endfor %}
+{%  endif %}
+{%  if bgpvars.neighbors is defined %}
+{%    for neighbor in bgpvars.neighbors %}
+  neighbor {{ neighbor["ipv4"] }} remote-as {{ neighbor["asn"] }}
+{%      if neighbor.next_hop_self is defined %}
+  neighbor {{ neighbor["ipv4"] }} next-hop-self
+{%      endif %}
+{%    endfor %}
+{%  endif %}
+{%  if bgpvars.networks is defined %}
+{%    for network in bgpvars.networks %}
+  network {{ network.keys()[0] }} {{ network.get(type.keys()[0], "") }}
+{%    endfor %}
+{%  endif %}
+  exit
+!
+access-list localhost permit 127.0.0.1/32
+access-list localhost deny any
+!
+line vty
+  access-class localhost
+{% endif %}
