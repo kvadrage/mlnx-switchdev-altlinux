@@ -22,7 +22,7 @@ def do_task(ctl, hosts, ifaces, aliases):
     m1_if1, m2_if1, sw_if1, sw_if2 = ifaces
 
     # We can't set STP state if kernel's STP is running.
-    br_options = {"stp_state": 0, "vlan_filtering": 1, "ageing_time": 1000}
+    br_options = {"stp_state": 0, "vlan_filtering": 1, "ageing_time": 500 }
     sw.create_bridge(slaves=[sw_if1, sw_if2], options=br_options)
 
     m1_if1.reset(ip=test_ip(1, 1))
@@ -39,12 +39,16 @@ def do_task(ctl, hosts, ifaces, aliases):
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software", False)
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware", False)
 
+    sleep(15)
+
     # Set STP state to LISTENING and make sure ping fails and FDB is not
     # populated.
     sw_if1.set_br_state(1)
     tl.ping_simple(m1_if1, m2_if1, fail_expected=True)
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software", False)
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware", False)
+
+    sleep(15)
 
     # Set STP state to LEARNING and make sure ping fails, but FDB *is*
     # populated.
@@ -53,7 +57,7 @@ def do_task(ctl, hosts, ifaces, aliases):
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software")
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware")
 
-    sleep(20)
+    sleep(25)
 
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software", False)
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware", False)
@@ -65,7 +69,7 @@ def do_task(ctl, hosts, ifaces, aliases):
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software")
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware")
 
-    sleep(20)
+    sleep(25)
 
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software", False)
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware", False)
