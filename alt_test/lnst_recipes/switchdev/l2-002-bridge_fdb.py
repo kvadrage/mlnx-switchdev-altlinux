@@ -35,9 +35,9 @@ def do_task(ctl, hosts, ifaces, aliases):
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software")
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware")
 
-    sleep(20)
+    sleep(30)
 
-    tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software", False)
+#    tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "software", False)
     tl.check_fdb(sw_if1, m1_if1.get_hwaddr(), 1, "hardware", False)
 
     # Disable learning and make sure FDB is not populated.
