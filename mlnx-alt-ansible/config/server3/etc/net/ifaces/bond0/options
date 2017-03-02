@@ -2,5 +2,5 @@ TYPE=bond
 ONBOOT=yes
 NM_CONTROLLED=no
 BONDMODE="802.3ad"
-BONDOPTIONS="miimon=100 lacp_rate=1"
-HOST="eth1 eth2"
+BONDOPTIONS="miimon=100 lacp_rate=1 xmit_hash_policy=1"
+HOST="eth2 eth3"
