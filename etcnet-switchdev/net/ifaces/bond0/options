@@ -1,7 +1,0 @@
-TYPE=bond
-ONBOOT=yes
-BOOTPROTO=static
-HOST="swp1 swp2"
-BONDMODE="802.3ad"
-BONDOPTIONS="miimon=100 lacp_rate=1"
-VLANS="1"

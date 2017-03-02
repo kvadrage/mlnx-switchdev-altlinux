@@ -1,0 +1,21 @@
+{% set intvars = ifaces_bridges[item] %}
+TYPE=bri
+ONBOOT=yes
+NM_CONTROLLED=no
+{% set bridge_options = "" %}
+{% if intvars.vlan_aware is defined and intvars.vlan_aware == "enable" %}
+{%    set bridge_options = bridge_options + "vlan_filtering 1 "%}
+{% endif %}
+{% if intvars.stp is defined and intvars.stp == "enable" %}
+{%    set bridge_options = bridge_options + "stp_state 1 "%}
+{% endif %}
+BRIDGE_OPTIONS="{{ bridge_options }}"
+{% if intvars.members is defined %}
+HOST="{{ intvars.members | join(" ") }}"
+{% endif %}
+{% if intvars.vlans is defined %}
+VLANS="{{intvars.vlans}}"
+{% endif %}
+{% if intvars.pvid is defined %}
+PVID={{intvars.pvid}}
+{% endif %}

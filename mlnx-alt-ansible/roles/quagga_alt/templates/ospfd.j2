@@ -1,0 +1,48 @@
+{% set node = node[ansible_hostname] %}
+{% set intvars = ifaces_all %}
+{% set ospfvars = node.OSPF %}
+!
+! ospfd.conf template for switch ({{ansible_hostname}})
+! Created by Ansible
+!
+{% for iface in intvars.keys() %}
+interface {{iface}}
+{% if intvars[iface].ospf is defined %}
+{%  if intvars[iface].ospf.network_type is defined %}
+  ip ospf network {{ intvars[iface].ospf["network_type"] }}
+{%  endif %}
+{%  if intvars[iface].ospf.priority is defined %}
+  ip ospf priority {{ intvars[iface].ospf["priority"] }}
+{%  endif %}
+{% endif %}
+!
+{% endfor %}
+!
+hostname {{ansible_hostname}}
+log file /var/log/quagga/ospfd.log informational
+service password-encryption
+no banner motd
+{% if ospfvars is defined %}
+router ospf
+  auto-cost reference-bandwidth  40000
+{%  if ospfvars.router_id is defined %}
+  ospf router-id {{ ospfvars.router_id }}
+{%  endif %}
+{%  if ospfvars.interfaces is defined %}
+  passive-interface default
+{%    for iface in ospfvars.interfaces %}
+  no passive-interface {{ iface }}
+{%    endfor %}
+{%  endif %}
+{%  if ospfvars.networks is defined %}
+{%    for network in ospfvars.networks %}
+  network {{ network["net"] }} area {{ network["area"] }}
+{%    endfor %}
+{%  endif %}
+{%  if ospfvars.redistribute is defined %}
+{%    for type in ospfvars.redistribute %}
+  redistribute {{ type.keys()[0] }} {{ type.get(type.keys()[0], "") }}
+{%    endfor %}
+{%  endif %}
+  exit
+{% endif %}

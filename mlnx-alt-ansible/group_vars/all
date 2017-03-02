@@ -1,0 +1,131 @@
+global:
+  save_local: "enable"
+  ignore_ifaces: ["default", "eth0", "unknown"]
+
+  route_maps:
+    filter-cisco-out:
+      - "route-map filter-cisco-out permit 10"
+      - "  match ip address 10"
+      - "route-map filter-cisco-out deny 100"
+
+  access_lists:
+    10:
+      - "permit 10.0.48.0 0.255.0.255"
+      - "permit 10.0.0.0 0.0.255.255"
+    20:
+      - "deny any"
+
+  prefix_lists:
+    local_net_list:
+      - "ip 10 permit 192.168.0.0/16 le 32"
+      - "ip 10 permit 172.16.0.0/16 le 32"
+      - "ip 100 deny any"
+
+node:
+  sw1:
+    interfaces:
+      lo:
+        ipv4_addresses: ["127.0.0.1/32", "1.1.1.1/32"]
+
+#      eth0:
+#        dhcp: "enable"
+
+      swp1:
+        #vlans: "1 10"
+        #pvid: 1
+
+      swp2:
+        #vlans: "1 10"
+        #pvid: 1
+
+      swp3:
+
+      swp4:
+
+      swp16:
+        ipv4_addresses: ["10.0.255.1/24"]
+        autoneg: "off"
+        speed: 40000
+        ospf:
+          network_type: "point-to-point"
+          #priority: 1
+
+      br0.10:
+        ipv4_addresses: ["172.16.10.1/24"]
+
+    bonds:
+      bond1:
+        mode: "802.3ad"
+        members: ["swp1", "swp2"]
+        options: "miimon=100 lacp_rate=1"
+        vlans: "1 10"
+        #pvid: 1
+
+      bond2:
+        mode: "802.3ad"
+        members: ["swp3", "swp4"]
+        options: "miimon=100 lacp_rate=1"
+        vlans: "1 10"
+        #pvid: 1
+
+    bridges:
+      br0:
+        vlan_aware: "enable"
+        stp: "enable"
+        members: ["bond1", "bond2"]
+        vlans: "1 10 20 30 40"
+        pvid: 1
+        ipv4_addresses: ["172.16.1.254/24"]
+
+    OSPF:
+      router_id: "1.1.1.1"
+      interfaces: ["swp16"]
+      networks:
+        - { net: "1.1.1.1/32", area: 0 }
+        - { net: "172.16.1.0/24", area: 0 }
+        - { net: "10.0.255.0/24", area: 0 }
+      redistribute:
+        - connected:
+        - static:
+        #- connected: "route-map filter-cisco-out metric 100 metric-type 2"
+    BGP:
+      asn: 65001
+      router_id: "1.1.1.1"
+      neighbors:
+        - { ipv4: "10.0.255.2", asn: 65001, next_hop_self: }
+      redistribute:
+        - connected:
+        - static:
+        #- connected: "route-map filter-cisco-out metric 100 metric-type 2"
+#      networks:
+#        - "1.1.1.1/32":
+#        - "172.16.1.0/24":
+#        - "10.0.255.0/24": "route-map filter-cisco-out"
+
+  server3:
+    interfaces:
+#      eth0:
+#        dhcp: "enable"
+      eth2:
+      eth3:
+    bonds:
+      bond0:
+        mode: "802.3ad"
+        members: ["eth2", "eth3"]
+        options: "miimon=100 lacp_rate=1 xmit_hash_policy=1"
+        ipv4_addresses: ["172.16.1.3/24"]
+        ipv4_routes: ["172.16.2.0/24 via 172.16.1.254"]
+
+  server4:
+    interfaces:
+#      eth0:
+#        dhcp: "enable"
+      eth2:
+      eth3:
+    bonds:
+      bond0:
+        mode: "802.3ad"
+        members: ["eth2", "eth3"]
+        options: "miimon=100 lacp_rate=1 xmit_hash_policy=1"
+        ipv4_addresses: ["172.16.1.4/24"]
+        ipv4_routes: ["172.16.2.0/24 via 172.16.1.254"]

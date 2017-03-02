@@ -1,0 +1,50 @@
+{% set node = node[ansible_hostname] %}
+{% set intvars = ifaces_all %}
+{% set access_lists = ({} | combine(global.access_lists|default({}), node.access_lists|default({})) ) %}
+{% set prefix_lists = ({} | combine(global.prefix_lists|default({}), node.prefix_lists|default({})) ) %}
+{% set route_maps = ({} | combine(global.route_maps|default({}), node.route_maps|default({})) ) %}
+!
+! zebra.conf template for switch ({{ansible_hostname}})
+! Created by Ansible
+!
+hostname {{ansible_hostname}}
+log file /var/log/quagga/zebra.log informational
+service password-encryption
+no banner motd
+!
+{% for iface in intvars.keys() %}
+interface {{iface}}
+  no link-detect
+  ipv6 nd suppress-ra
+{% endfor %}
+!
+access-list localhost permit 127.0.0.1/32
+access-list localhost deny any
+!
+{### Configure access-lists ###}
+{% for acl_name in access_lists %}
+{% for item in access_lists[acl_name] %}
+access-list {{acl_name}} {{item}}
+{% endfor %}
+{% endfor %}
+!
+{### Configure prefix lists ###}
+{% for list_name in prefix_lists %}
+{% for item in prefix_lists[list_name] %}
+{% set ip, rule = item.split(' ',1) %}
+{{ip}} prefix-list {{list_name}} seq {{rule}}
+{% endfor %}
+{% endfor %}
+!
+{### Configure route-maps ###}
+{% for rmap_name in route_maps %}
+{% for item in route_maps[rmap_name] %}
+{{item}}
+{% endfor %}
+{% endfor %}
+!
+ip forwarding
+!
+line vty
+!
+end

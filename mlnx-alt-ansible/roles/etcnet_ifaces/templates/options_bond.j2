@@ -1,0 +1,19 @@
+{% set intvars = ifaces_bonds[item] %}
+TYPE=bond
+ONBOOT=yes
+NM_CONTROLLED=no
+{% if intvars.mode is defined %}
+BONDMODE="{{ intvars.mode }}"
+{% endif %}
+{% if intvars.options is defined %}
+BONDOPTIONS="{{ intvars.options }}"
+{% endif %}
+{% if intvars.members is defined %}
+HOST="{{ intvars.members | join(" ") }}"
+{% endif %}
+{% if intvars.vlans is defined %}
+VLANS="{{intvars.vlans}}"
+{% endif %}
+{% if intvars.pvid is defined %}
+PVID={{intvars.pvid}}
+{% endif %}

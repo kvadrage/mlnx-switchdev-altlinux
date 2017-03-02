@@ -1,0 +1,11 @@
+---
+save_local: "{{global.save_local|default('enabled')}}"
+
+sysctl_file: /etc/net/sysctl.conf
+quagga_folder_local: "config/{{ansible_hostname}}/etc/quagga"
+zebra_conf_local: "{{quagga_folder_local}}/zebra.conf"
+zebra_conf: "/etc/quagga/zebra.conf"
+ospfd_conf_local: "{{quagga_folder_local}}/ospfd.conf"
+ospfd_conf: "/etc/quagga/ospfd.conf"
+bgpd_conf_local: "{{quagga_folder_local}}/bgpd.conf"
+bgpd_conf: "/etc/quagga/bgpd.conf"

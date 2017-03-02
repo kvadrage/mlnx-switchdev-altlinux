@@ -1,0 +1,22 @@
+{% set intvars = ifaces_eth[item] %}
+{% set hostint = item | regex_replace("^(.+)\.\d+$", "\\1") %}
+{% set subvlan = item | regex_replace("^.+\.(\d+)$", "\\1") %}
+{% if intvars == "lo" %}
+DISABLED=no
+{% elif item | match("[A-Za-z0-9]+\.[0-9]+") %}
+TYPE=vlan
+HOST={{ item.split(".")[0] }}
+VID={{ item.split(".")[1] }}
+BOOTPROTO=static
+{% else %}
+TYPE=eth
+DISABLED=no
+ONBOOT=yes
+NM_CONTROLLED=no
+{% if intvars.vlans is defined %}
+VLANS="{{intvars.vlans}}"
+{% endif %}
+{% if intvars.pvid is defined %}
+PVID={{intvars.pvid}}
+{% endif %}
+{% endif %}

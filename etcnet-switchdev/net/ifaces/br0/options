@@ -1,6 +1,0 @@
-TYPE=bri
-BRIDGE_OPTIONS="vlan_filtering 1 stp_state 1"
-HOST='bond0 bond1'
-ONBOOT=yes
-VLANS="1 10 20 30 40"
-#PVID=10

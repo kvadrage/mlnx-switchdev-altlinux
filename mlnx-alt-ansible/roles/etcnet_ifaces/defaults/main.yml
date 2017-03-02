@@ -1,0 +1,5 @@
+---
+save_local: "{{global.save_local|default('enabled')}}"
+
+ifaces_folder: "/etc/net/ifaces"
+ifaces_folder_local: "config/{{ansible_hostname}}/etc/net/ifaces"

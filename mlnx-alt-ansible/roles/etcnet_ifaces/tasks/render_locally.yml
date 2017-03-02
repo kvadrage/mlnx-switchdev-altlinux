@@ -1,0 +1,132 @@
+---
+- name: display ifaces folder
+  debug:
+    msg: "ifaces_folder_local: {{ifaces_folder_local}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: create ifaces vars
+  set_fact:
+    ignore_ifaces: "{{global.ignore_ifaces | default([])}}"
+    ifaces_all: "{{ ({} | combine(node[ansible_hostname].interfaces|default({}),
+                node[ansible_hostname].bonds|default({}),
+                node[ansible_hostname].bridges|default({}))) }}"
+    ifaces_eth: "{{node[ansible_hostname].interfaces|default({})}}"
+    ifaces_bonds: "{{node[ansible_hostname].bonds|default({})}}"
+    ifaces_bridges: "{{node[ansible_hostname].bridges|default({})}}"
+  delegate_to: localhost
+  become: false
+  tags:
+    - ifaces_setup
+    - local
+- debug:
+    msg:
+      - "ignore_ifaces: {{ignore_ifaces}}"
+      - "ifaces_eth: {{ifaces_eth.keys()}}"
+      - "ifaces_bonds: {{ifaces_bonds.keys()}}"
+      - "ifaces_bridges: {{ifaces_bridges.keys()}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: collect existing iface folders locally
+  find:
+    paths: "{{ifaces_folder_local}}"
+    recurse: True
+    file_type: directory
+  delegate_to: localhost
+  become: false
+  register: collected_folders
+  tags:
+    - ifaces_setup
+    - local
+- name: setting existing ifaces facts
+  set_fact:
+    existing_ifaces: "{{collected_folders.files|map(attribute='path')|map('basename')|list}}"
+  tags:
+    - ifaces_setup
+    - local
+- name: setting ifaces to remove facts
+  set_fact:
+    remove_ifaces: "{{existing_ifaces | difference(ifaces_all.keys() | union (ignore_ifaces))}}"
+  tags:
+    - ifaces_setup
+    - local
+- name: display existing ifaces
+  debug:
+    var: existing_ifaces
+  tags:
+    - ifaces_setup
+    - local
+- name: display ifaces to remove
+  debug:
+    var: remove_ifaces
+  tags:
+    - ifaces_setup
+    - local
+
+- name: remove existing iface folders that are not defined in facts locally
+  file:
+    path: "{{ifaces_folder_local}}/{{item}}/"
+    state: absent
+  delegate_to: localhost
+  become: false
+  with_items: "{{remove_ifaces}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: create per iface folders locally
+  file: path="{{ifaces_folder_local}}/{{item}}" state=directory recurse=yes
+  delegate_to: localhost
+  become: false
+  with_items: "{{ifaces_all}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: create rendered flat-file <iface>/ipv4address locally
+  template: src=ipv4address.j2 dest="{{ifaces_folder_local}}/{{item}}/ipv4address"
+  delegate_to: localhost
+  become: false
+  with_items: "{{ifaces_all}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: create rendered flat-file <iface>/ipv4route locally
+  template: src=ipv4route.j2 dest="{{ifaces_folder_local}}/{{item}}/ipv4route"
+  delegate_to: localhost
+  become: false
+  with_items: "{{ifaces_all}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: create rendered flat-file <iface>/options for eth locally
+  template: src=options_eth.j2 dest={{ifaces_folder_local}}/{{item}}/options
+  delegate_to: localhost
+  become: false
+  with_items: "{{ifaces_eth}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: create rendered flat-file <iface>/options for bonds locally
+  template: src=options_bond.j2 dest={{ifaces_folder_local}}/{{item}}/options
+  delegate_to: localhost
+  become: false
+  with_items: "{{ifaces_bonds}}"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: create rendered flat-file <iface>/options for bridges locally
+  template: src=options_bridge.j2 dest={{ifaces_folder_local}}/{{item}}/options
+  delegate_to: localhost
+  become: false
+  with_items: "{{ifaces_bridges}}"
+  tags:
+    - ifaces_setup
+    - local

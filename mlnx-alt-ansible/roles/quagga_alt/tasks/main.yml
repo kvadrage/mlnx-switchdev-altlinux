@@ -1,0 +1,86 @@
+---
+- name: enable routing and disable RPF
+  lineinfile:
+    dest: "{{sysctl_file}}"
+    regexp: "{{item.regexp}}"
+    line: "{{item.line}}"
+  with_items:
+    - { regexp: "^net.ipv4.ip_forward", line: "net.ipv4.ip_forward = 1"}
+    - { regexp: "^net.ipv4.conf.default.rp_filter", line: "net.ipv4.conf.default.rp_filter = 0"}
+  tags:
+    - enable_routing
+
+- name: create ifaces vars for all interface types
+  set_fact:
+    ifaces_all: "{{ ({} | combine(node[ansible_hostname].interfaces|default({}),
+                node[ansible_hostname].bonds|default({}),
+                node[ansible_hostname].bridges|default({}))) }}"
+  tags:
+    - quagga_setup
+- debug:
+    msg: "ifaces_all: {{ifaces_all.keys()}}"
+  tags:
+    - quagga_setup
+
+- name: create local quagga folder
+  file: path={{quagga_folder_local}} state=directory recurse=yes
+  delegate_to: localhost
+  become: false
+  when: save_local is defined and save_local == "enable"
+  tags:
+    - ifaces_setup
+    - local
+
+- name: render zebra configuration locally
+  template: src=zebra.j2 dest={{zebra_conf_local}}
+  delegate_to: localhost
+  become: false
+  when: save_local is defined and save_local == "enable"
+  tags:
+    - quagga_setup
+    - local
+
+- name: render zebra configuration
+  template: src=zebra.j2 dest={{zebra_conf}} owner=quagga group=quagga mode=0600
+  notify:
+    - enable zebra
+    - check zebra
+    - restart zebra
+  tags:
+    - quagga_setup
+
+- name: render ospfd configuration locally
+  template: src=ospfd.j2 dest={{ospfd_conf_local}}
+  delegate_to: localhost
+  become: false
+  when: save_local is defined and save_local == "enable"
+  tags:
+    - quagga_setup
+    - local
+
+- name: render ospfd configuration
+  template: src=ospfd.j2 dest={{ospfd_conf}} owner=quagga group=quagga mode=0600
+  notify:
+    - enable ospfd
+    - check ospfd
+    - restart ospfd
+  tags:
+    - quagga_setup
+
+- name: render bgpd configuration locally
+  template: src=bgpd.j2 dest={{bgpd_conf_local}}
+  delegate_to: localhost
+  become: false
+  when: save_local is defined and save_local == "enable"
+  tags:
+    - quagga_setup
+    - local
+
+- name: render bgpd configuration
+  template: src=bgpd.j2 dest={{bgpd_conf}} owner=quagga group=quagga mode=0600
+  notify:
+    - enable bgpd
+    - check bgpd
+    - restart bgpd
+  tags:
+    - quagga_setup

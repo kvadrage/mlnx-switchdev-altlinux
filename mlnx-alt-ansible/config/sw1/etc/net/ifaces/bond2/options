@@ -1,0 +1,7 @@
+TYPE=bond
+ONBOOT=yes
+NM_CONTROLLED=no
+BONDMODE="802.3ad"
+BONDOPTIONS="miimon=100 lacp_rate=1"
+HOST="swp3 swp4"
+VLANS="1 10"
