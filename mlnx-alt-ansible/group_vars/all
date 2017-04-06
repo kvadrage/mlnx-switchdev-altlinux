@@ -1,5 +1,5 @@
 global:
-  save_local: "enable"
+  #save_local: "enable"
   ignore_ifaces: ["default", "eth0", "unknown"]
 
   route_maps:
@@ -71,7 +71,7 @@ node:
     bridges:
       br0:
         vlan_aware: "enable"
-        stp: "enable"
+        #stp: "enable"
         members: ["bond1", "bond2"]
         vlans: "1 10 20 30 40"
         pvid: 1
