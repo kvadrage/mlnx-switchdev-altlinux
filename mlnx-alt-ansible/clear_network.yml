@@ -1,0 +1,56 @@
+---
+- hosts: switches_alt
+  user: buy
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: create ifaces vars
+      set_fact:
+        ifaces_all: "{{ ({} | combine(node[ansible_hostname].interfaces|default({}),
+                    node[ansible_hostname].bonds|default({}),
+                    node[ansible_hostname].bridges|default({}))) }}"
+    - name: shutdown ifaces
+      command: ifdown {{item}}
+      with_items: "{{ifaces_all}}"
+    - name: clear ifaces
+      file:
+        path: "/etc/net/ifaces/{{item}}/"
+        state: absent
+      with_items: "{{ifaces_all}}"
+      notify: restart network
+    - name: clear zebra config
+      copy: content="" dest=/etc/quagga/zebra.conf
+      notify: stop zebra
+    - name: clear ospfd config
+      copy: content="" dest=/etc/quagga/ospfd.conf
+      notify: stop ospfd
+  handlers:
+    - name: restart network
+      service: name=network state=restarted
+    - name: stop zebra
+      service: name=zebra state=stopped
+    - name: stop ospfd
+      service: name=ospfd state=stopped
+
+- hosts: servers_alt
+  user: buy
+  become: yes
+  become_method: sudo
+  tasks:
+    - name: create ifaces vars
+      set_fact:
+        ifaces_all: "{{ ({} | combine(node[ansible_hostname].interfaces|default({}),
+                    node[ansible_hostname].bonds|default({}),
+                    node[ansible_hostname].bridges|default({}))) }}"
+    - name: shutdown ifaces
+      command: ifdown {{item}}
+      with_items: "{{ifaces_all}}"
+    - name: clear ifaces
+      file:
+        path: "/etc/net/ifaces/{{item}}/"
+        state: absent
+      with_items: "{{ifaces_all}}"
+      notify: restart network
+  handlers:
+    - name: restart network
+      service: name=network state=restarted
